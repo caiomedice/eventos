@@ -2885,18 +2885,6 @@
         <div class="form-label">🔗 Link do evento</div>
         <input class="form-input" id="manual-url" type="url" placeholder="Instagram, Facebook, Sympla...">
       </div>
-      <div class="form-group" style="margin-bottom:10px;">
-        <div class="form-label">📝 Descrição do evento</div>
-        <textarea class="form-input" id="manual-descricao" rows="3" placeholder="Descreve o evento, artistas, ambiente..." style="resize:vertical;min-height:80px;"></textarea>
-      </div>
-      <div class="form-group" style="margin-bottom:10px;">
-        <div class="form-label">📸 Link de foto (opcional)</div>
-        <input class="form-input" id="manual-foto" type="url" placeholder="https://... link direto para imagem">
-      </div>
-      <div class="form-group" style="margin-bottom:14px;">
-        <div class="form-label">🎬 Link de vídeo YouTube (opcional)</div>
-        <input class="form-input" id="manual-video" type="url" placeholder="https://youtube.com/watch?v=...">
-      </div>
       <div class="form-group" style="margin-bottom:14px;">
         <div class="form-label">🔄 É evento recorrente?</div>
         <div style="display:flex;gap:8px;margin-top:6px;" id="manual-recorrente-chips">
@@ -2989,9 +2977,6 @@
           <input class="form-input" id="admin-ev-preco" placeholder="Preço" style="font-size:13px;">
         </div>
         <input class="form-input" id="admin-ev-url" placeholder="Link (opcional)" style="font-size:13px;margin-bottom:8px;">
-        <textarea class="form-input" id="admin-ev-descricao" placeholder="Descrição do evento (opcional)" rows="2" style="font-size:13px;margin-bottom:8px;resize:vertical;"></textarea>
-        <input class="form-input" id="admin-ev-foto" type="url" placeholder="URL de foto (opcional)" style="font-size:13px;margin-bottom:8px;">
-        <input class="form-input" id="admin-ev-video" type="url" placeholder="URL YouTube (opcional)" style="font-size:13px;margin-bottom:8px;">
         <button onclick="adminAddEvent()" class="btn-primary" style="width:100%;padding:11px;font-size:13px;">
           ✅ Publicar evento
         </button>
@@ -4080,9 +4065,6 @@ function submitManualEvent() {
   const preco     = document.getElementById('manual-preco')?.value?.trim() || 'Grátis';
   const url       = document.getElementById('manual-url')?.value?.trim() || null;
   const freq      = document.getElementById('manual-frequencia')?.value?.trim() || '';
-  const descricao = document.getElementById('manual-descricao')?.value?.trim() || null;
-  const foto      = document.getElementById('manual-foto')?.value?.trim() || null;
-  const video     = document.getElementById('manual-video')?.value?.trim() || null;
 
   if (!nome)    { showToast('⚠️ Escreve o nome do evento');   return; }
   if (!dataVal) { showToast('⚠️ Escolhe a data do evento');   return; }
@@ -4097,11 +4079,13 @@ function submitManualEvent() {
     return;
   }
 
+  // Paleta de cores e emoji por categoria
   const catPalettes = {
     'music':   { c1:'#1a0a2e', c2:'#4c1d95', emoji:'🎵' },
     'culture': { c1:'#0a0a1a', c2:'#1e1e3f', emoji:'🎭' },
     'food':    { c1:'#1a0f00', c2:'#7c2d12', emoji:'🍽️' },
   };
+  // Refinamento de emoji pelo género específico
   const generoEmojis = {
     'jazz':'🎷','rock':'🎸','eletrônico':'🎧','fado':'🎶','clássica':'🎻',
     'teatro':'🎭','exposição':'🖼️','cinema':'🎬','comédia':'🤣','dança':'💃',
@@ -4111,29 +4095,48 @@ function submitManualEvent() {
   const genKey = Object.keys(generoEmojis).find(k => genero.toLowerCase().includes(k));
   const emoji = genKey ? generoEmojis[genKey] : pal.emoji;
 
-  // Envia para Supabase como pendente — admin aprova antes de aparecer a todos
-  const _db = window._supabase;
-  if (_db) {
-    _db.from('events').insert({
-      nome, genero, categoria,
-      data_hora: dateObj.toISOString(),
-      local, endereco: endereco || null,
-      preco, url_ingresso: url || null,
-      descricao: descricao || null,
-      url_foto: foto || null,
-      video_url: video || null,
-      emoji, cor1: pal.c1, cor2: pal.c2,
-      status: 'pending', fonte: 'Utilizador',
-    }).then(function(r){ if(r.error) console.warn('Evento pendente:', r.error.message); });
-  }
+  const newId = Date.now();
+  const newEvent = {
+    id:          newId,
+    name:        nome,
+    genre:       genero,
+    category:    categoria,
+    emoji,
+    dateObj,
+    date:        formatEventDate(dateObj),
+    venue:       local + (endereco ? ` · ${endereco}` : ''),
+    dist:        userLocation.lat
+                   ? parseFloat((Math.random()*5+0.5).toFixed(1))
+                   : 0.5,
+    going:       '1',
+    price:       preco,
+    source:      'Adicionado por utilizador',
+    url,
+    c1:          pal.c1,
+    c2:          pal.c2,
+    recommended: false,
+    tags:        [genero, '👤 Manual'],
+    recorrente:  manualRecorrente !== 'nao' ? 'Sim' : 'Não',
+    frequencia:  freq,
+  };
 
-  ['manual-nome','manual-local','manual-endereco','manual-genero','manual-preco',
-   'manual-url','manual-frequencia','manual-data','manual-descricao','manual-foto','manual-video']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  if (!EVENTS.find(e => e.id === newId)) EVENTS.push(newEvent);
+
+  const saved = JSON.parse(localStorage.getItem('ep_manual_events') || '[]');
+  saved.push({ ...newEvent, dateObj: newEvent.dateObj.toISOString() });
+  localStorage.setItem('ep_manual_events', JSON.stringify(saved));
+
+  ['manual-nome','manual-local','manual-endereco','manual-genero',
+   'manual-preco','manual-url','manual-frequencia','manual-data'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
   document.getElementById('manual-data').value = new Date().toISOString().split('T')[0];
 
   closeAIModal();
-  showToast(`📨 "${nome}" enviado para aprovação pelo admin!`);
+  applyFilters();
+  updateFeaturedCard();
+  showToast(`✅ "${nome}" adicionado à lista!`);
 }
 
 // Carrega eventos manuais guardados no localStorage
@@ -4626,43 +4629,47 @@ const EVENT_COORDS = {
 var currentEventId = 0;
 
 function getCoords(id) {
-  return EVENT_COORDS[id] || { lat: null, lng: null, address: 'Porto, Portugal' };
+  return EVENT_COORDS[id] || { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
 }
 
 function openWaze(e) {
   e.preventDefault();
-  var c=getCoords(currentEventId), q=encodeURIComponent(c.address);
-  var url=(c.lat&&c.lng)?'https://waze.com/ul?ll='+c.lat+','+c.lng+'&navigate=yes&zoom=17':'https://waze.com/ul?q='+q+'&navigate=yes';
+  const { lat, lng } = getCoords(currentEventId);
+  const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&zoom=17`;
   showToast('🚗 A abrir o Waze...');
-  setTimeout(function(){ window.open(url,'_blank'); },300);
+  setTimeout(() => window.open(url, '_blank'), 400);
 }
 
 function openGoogleMaps(e) {
   e.preventDefault();
-  var c=getCoords(currentEventId);
-  var dest=(c.lat&&c.lng)?c.lat+','+c.lng:encodeURIComponent(c.address);
+  const { lat, lng, address } = getCoords(currentEventId);
+  const dest = encodeURIComponent(address);
+  // Try native app first, fallback to web
+  const nativeUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
+  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
   showToast('🗺 A abrir o Google Maps...');
-  setTimeout(function(){ window.open('https://www.google.com/maps/dir/?api=1&destination='+dest+'&travelmode=driving','_blank'); },300);
+  setTimeout(() => {
+    // On mobile try deep link, else web
+    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+    window.open(isMobile ? `https://maps.google.com/?daddr=${lat},${lng}` : webUrl, '_blank');
+  }, 400);
 }
 
 function openAppleMaps(e) {
   e.preventDefault();
-  var c=getCoords(currentEventId), q=encodeURIComponent(c.address);
-  var url=(c.lat&&c.lng)?'https://maps.apple.com/?daddr='+c.lat+','+c.lng+'&dirflg=d':'https://maps.apple.com/?q='+q+'&dirflg=d';
+  const { lat, lng, address } = getCoords(currentEventId);
+  const dest = encodeURIComponent(address);
+  const url = `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
   showToast('🍎 A abrir o Apple Maps...');
-  setTimeout(function(){ window.open(url,'_blank'); },300);
+  setTimeout(() => window.open(url, '_blank'), 400);
 }
 
 function copyAddress() {
-  var c=getCoords(currentEventId);
+  const { address } = getCoords(currentEventId);
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(c.address).then(function(){ showToast('📋 Endereço copiado!'); });
+    navigator.clipboard.writeText(address).then(() => showToast('📋 Endereço copiado!'));
   } else {
-    var ta=document.createElement('textarea');
-    ta.value=c.address; ta.style.position='fixed'; ta.style.opacity='0';
-    document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); showToast('📋 Endereço copiado!'); } catch(x){ showToast('📋 '+c.address); }
-    document.body.removeChild(ta);
+    showToast('📋 ' + address);
   }
 }
 
@@ -4686,17 +4693,14 @@ function shareEvent() {
 }
 
 function updateMapForEvent(id) {
-  var c=getCoords(id), src;
-  if (c.lat&&c.lng) {
-    var d=0.025;
-    src='https://www.openstreetmap.org/export/embed.html?bbox='+(c.lng-d)+','+(c.lat-d)+','+(c.lng+d)+','+(c.lat+d)+'&layer=mapnik&marker='+c.lat+','+c.lng;
-  } else {
-    src='https://www.openstreetmap.org/export/embed.html?query='+encodeURIComponent(c.address)+'&layer=mapnik';
-  }
-  document.getElementById('detail-map-iframe').src=src;
-  document.getElementById('detail-map-iframe').style.pointerEvents='none';
+  const c = getCoords(id);
+  const delta = 0.025;
+  const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
+  document.getElementById('detail-map-iframe').src = src;
+  document.getElementById('detail-map-iframe').style.pointerEvents = 'none';
   document.getElementById('map-overlay').classList.remove('hidden');
-  document.getElementById('copy-address-text').textContent=c.address;
+  document.getElementById('copy-address-text').textContent = c.address;
 }
 
 
@@ -5269,36 +5273,30 @@ async function moderateEvent(id, status) {
 
 async function adminAddEvent() {
   const _db = getDB();
-  if (!_db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
-  const nome      = document.getElementById('admin-ev-nome')?.value?.trim();
-  const data      = document.getElementById('admin-ev-data')?.value;
-  const hora      = document.getElementById('admin-ev-hora')?.value || '22:00';
-  const local     = document.getElementById('admin-ev-local')?.value?.trim();
-  const endereco  = document.getElementById('admin-ev-endereco')?.value?.trim();
-  const genero    = document.getElementById('admin-ev-genero')?.value?.trim();
-  const preco     = document.getElementById('admin-ev-preco')?.value?.trim();
-  const url       = document.getElementById('admin-ev-url')?.value?.trim();
-  const descricao = document.getElementById('admin-ev-descricao')?.value?.trim();
-  const foto      = document.getElementById('admin-ev-foto')?.value?.trim();
-  const video     = document.getElementById('admin-ev-video')?.value?.trim();
+  if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
+  const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
+  const data     = document.getElementById('admin-ev-data')?.value;
+  const hora     = document.getElementById('admin-ev-hora')?.value || '22:00';
+  const local    = document.getElementById('admin-ev-local')?.value?.trim();
+  const endereco = document.getElementById('admin-ev-endereco')?.value?.trim();
+  const genero   = document.getElementById('admin-ev-genero')?.value?.trim();
+  const preco    = document.getElementById('admin-ev-preco')?.value?.trim();
+  const url      = document.getElementById('admin-ev-url')?.value?.trim();
 
   if (!nome || !data || !local) { showToast('⚠️ Preenche nome, data e local'); return; }
 
   try {
     const dataHora = new Date(`${data}T${hora}`).toISOString();
-    const { error } = await _db.from('events').insert({
+    const { error } = await client.from('events').insert({
       nome, genero: genero || 'Evento', data_hora: dataHora,
       local, endereco: endereco || null,
       preco: preco || 'Grátis', url_ingresso: url || null,
-      descricao: descricao || null,
-      url_foto: foto || null,
-      video_url: video || null,
       status: 'approved', emoji: '🎉',
       cor1: '#0e1118', cor2: '#312e81',
     });
     if (error) throw error;
     showToast('✅ Evento publicado com sucesso!');
-    ['admin-ev-nome','admin-ev-local','admin-ev-endereco','admin-ev-genero','admin-ev-preco','admin-ev-url','admin-ev-descricao','admin-ev-foto','admin-ev-video']
+    ['admin-ev-nome','admin-ev-local','admin-ev-endereco','admin-ev-genero','admin-ev-preco','admin-ev-url']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     loadAdminStats();
     if (typeof loadDBEvents === 'function') loadDBEvents();
@@ -5308,7 +5306,7 @@ async function adminAddEvent() {
 // ── Lista de utilizadores ─────────────────────────────
 async function loadAdminUsers() {
   const _db = getDB();
-  if (!_db) return;
+  if (!db) return;
   const list = document.getElementById('admin-users-list');
   try {
     const { data } = await getDB()
@@ -5434,128 +5432,126 @@ function showToast(msg) {
 // =====================</script>
 
 <script>
+// ── SUPABASE INIT ──────────────────────────────────────
 (function() {
   function initSB() {
     if (!window.supabase) { setTimeout(initSB, 100); return; }
-    if (window._supabase) return; // um único cliente — elimina o lock
+    if (window.__sbDone || window._supabase) return;
+    window.__sbDone = true;
 
     var client = window.supabase.createClient(
       'https://jqchhyhwoqnhumopcnip.supabase.co',
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4',
-      { auth: { persistSession: true, autoRefreshToken: true } }
+      { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'eventospt-auth' } }
     );
     window._supabase = client;
+    window.__sb_client = client;
+    console.log('✅ Supabase ligado');
 
-    // ── Auth ─────────────────────────────────────────────
-    client.auth.onAuthStateChange(function(event, session) {
+    client.auth.onAuthStateChange(async function(event, session) {
       currentUser = session ? session.user : null;
-      if (event === 'SIGNED_IN') {
-        showScreen('app'); if (typeof initApp==='function') initApp();
-        _dados(currentUser); return;
-      }
-      if (event === 'SIGNED_OUT') { currentUser = null; showScreen('auth'); return; }
-      if (event === 'INITIAL_SESSION') {
-        if (currentUser) { showScreen('app'); if (typeof initApp==='function') initApp(); _dados(currentUser); }
-        else showScreen('auth');
-        return;
+      if (currentUser) {
+        try {
+          var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS' : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
+          client.from('user_sessions').insert({ user_id: currentUser.id, dispositivo: disp });
+        } catch(e) {}
+        try {
+          var fav = await client.from('favorites').select('event_id').eq('user_id', currentUser.id);
+          favoritesIds = (fav.data || []).map(function(f){ return f.event_id; });
+        } catch(e) {}
+        try {
+          var prof = await client.from('profiles').select('*').eq('id', currentUser.id).single();
+          if (prof.data) {
+            var n = document.getElementById('profile-name');
+            var e = document.getElementById('profile-email');
+            if (n) n.textContent = prof.data.nome || currentUser.email.split('@')[0];
+            if (e) e.textContent = currentUser.email || '';
+          }
+        } catch(e) {}
+        if (typeof checkAdmin === 'function') checkAdmin(currentUser);
+        if (typeof loadDBEvents === 'function') await loadDBEvents();
+        if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
+      } else {
+        if (typeof showScreen === 'function') showScreen('auth');
       }
     });
 
-    function _dados(user) {
-      try { client.from('user_sessions').insert({ user_id: user.id, dispositivo: /iPhone|iPad/i.test(navigator.userAgent)?'iOS':/Android/i.test(navigator.userAgent)?'Android':'Web' }); } catch(e){}
-      client.from('profiles').select('*').eq('id', user.id).single().then(function(r){
-        if (!r.data) return;
-        var n=document.getElementById('profile-name'), e=document.getElementById('profile-email');
-        if (n) n.textContent = r.data.nome || user.email.split('@')[0];
-        if (e) e.textContent = user.email || '';
-      }).catch(function(){});
-      client.from('favorites').select('event_id').eq('user_id', user.id).then(function(r){
-        if (r.data) favoritesIds = r.data.map(function(f){ return f.event_id; });
-      }).catch(function(){});
-      window.loadDBEvents();
-      if (typeof checkAdmin==='function') checkAdmin(user);
-    }
-
-    // ── Login ─────────────────────────────────────────────
     window.doLogin = async function() {
-      var email = ((document.getElementById('login-email')||{}).value||'').trim();
-      var pass  = (document.getElementById('login-pass')||{}).value||'';
-      if (!email||!pass) { showToast('⚠️ Preenche email e senha'); return; }
+      var email = document.getElementById('login-email') ? document.getElementById('login-email').value.trim() : '';
+      var pass  = document.getElementById('login-pass')  ? document.getElementById('login-pass').value : '';
+      if (!email || !pass) { showToast('⚠️ Preenche email e senha'); return; }
       var btn = document.querySelector('#login-form .btn-primary');
-      if (btn) { btn.textContent='A entrar...'; btn.disabled=true; }
-      var r = await client.auth.signInWithPassword({ email:email, password:pass });
-      if (btn) { btn.textContent='Entrar no app'; btn.disabled=false; }
-      if (r.error) {
-        var m=r.error.message||'';
-        showToast(m.includes('Invalid login')?'❌ Email ou senha incorretos':m.includes('not confirmed')?'❌ Confirma o teu email':'❌ '+m);
+      if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
+      try {
+        var r = await client.auth.signInWithPassword({ email: email, password: pass });
+        if (r.error) throw r.error;
+        showToast('✅ Bem-vindo!');
+      } catch(err) {
+        var msg = err.message || '';
+        if (msg.includes('Invalid login')) showToast('❌ Email ou senha incorretos');
+        else if (msg.includes('not confirmed')) showToast('❌ Confirma o teu email');
+        else showToast('❌ ' + msg);
+        if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
       }
     };
 
-    // ── Registo ───────────────────────────────────────────
     window.doSignup = async function() {
-      var nome  = ((document.getElementById('signup-name') ||{}).value||'').trim();
-      var email = ((document.getElementById('signup-email')||{}).value||'').trim();
-      var pass  = (document.getElementById('signup-pass') ||{}).value||'';
-      if (!nome||!email||!pass) { showToast('⚠️ Preenche todos os campos'); return; }
-      if (pass.length<6) { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
+      var nome  = document.getElementById('signup-name')  ? document.getElementById('signup-name').value.trim() : '';
+      var email = document.getElementById('signup-email') ? document.getElementById('signup-email').value.trim() : '';
+      var pass  = document.getElementById('signup-pass')  ? document.getElementById('signup-pass').value : '';
+      if (!nome || !email || !pass) { showToast('⚠️ Preenche todos os campos'); return; }
+      if (pass.length < 6) { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
       var btn = document.querySelector('#signup-form .btn-primary');
-      if (btn) { btn.textContent='A criar...'; btn.disabled=true; }
-      var r = await client.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:nome } } });
-      if (btn) { btn.textContent='Criar conta grátis'; btn.disabled=false; }
-      if (r.error) showToast('❌ '+r.error.message);
-      else showToast('🎉 Conta criada! Verifica o teu email.');
+      if (btn) { btn.textContent = 'A criar...'; btn.disabled = true; }
+      try {
+        var r = await client.auth.signUp({ email: email, password: pass, options: { data: { full_name: nome } } });
+        if (r.error) throw r.error;
+        showToast('🎉 Conta criada! Verifica o teu email.');
+      } catch(err) {
+        showToast('❌ ' + (err.message || 'Erro'));
+        if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
+      }
     };
 
-    // ── Logout ────────────────────────────────────────────
     window.logout = async function() {
-      await client.auth.signOut().catch(function(){});
+      await client.auth.signOut();
+      currentUser = null;
+      showToast('👋 Até logo!');
+      setTimeout(function(){ showScreen('auth'); }, 600);
     };
 
-    // ── Google ────────────────────────────────────────────
-    window.googleLogin = async function() {
-      var r = await client.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:window.location.origin } });
-      if (r.error) showToast('❌ Erro Google: '+r.error.message);
-    };
-
-    // ── Eventos: próximos 30 dias, todos os campos ────────
     window.loadDBEvents = async function() {
       try {
-        var desde = new Date(Date.now()-30*60*1000).toISOString();
-        var ate   = new Date(Date.now()+30*24*60*60*1000).toISOString();
         var r = await client.from('events').select('*').eq('status','approved')
-          .gt('data_hora',desde).lt('data_hora',ate)
-          .order('data_hora',{ascending:true}).limit(200);
-        if (r.error||!r.data||!r.data.length) return;
+          .gt('data_hora', new Date(Date.now() - 30*60*1000).toISOString())
+          .order('data_hora', { ascending: true }).limit(100);
+        if (r.error || !r.data || !r.data.length) return;
         r.data.forEach(function(ev) {
-          // Regista endereço/coords para Waze, Maps, copiar
-          var addr = ev.local+(ev.endereco?', '+ev.endereco:'')+', Portugal';
-          EVENT_COORDS[ev.id] = { lat:ev.lat||null, lng:ev.lng||null, address:addr };
-          var c = {
-            id:ev.id, name:ev.nome, genre:ev.genero, category:ev.categoria||'music',
-            emoji:ev.emoji||'🎉',
-            dateObj:new Date(ev.data_hora),
-            date:typeof formatEventDate==='function'?formatEventDate(new Date(ev.data_hora)):ev.data_hora,
-            venue:ev.local+(ev.endereco?' · '+ev.endereco:''),
-            dist:parseFloat((Math.random()*8+0.5).toFixed(1)),
-            going:String(ev.going_count||Math.floor(Math.random()*400+50)),
-            price:ev.preco||'Grátis', source:ev.fonte||'EventosPt',
-            url:ev.url_ingresso||null,
-            c1:ev.cor1||'#0e1118', c2:ev.cor2||'#312e81',
-            recommended:ev.recomendado||false, tags:[ev.genero], fromDB:true,
-            // campos de media — mapeados da BD
-            descricao: ev.descricao||null,
-            fotos:     ev.url_foto ? [ev.url_foto] : [],
-            video:     ev.video_url||null,
+          var converted = {
+            id: ev.id, name: ev.nome, genre: ev.genero,
+            emoji: ev.emoji || '🎉',
+            dateObj: new Date(ev.data_hora),
+            date: typeof formatEventDate==='function' ? formatEventDate(new Date(ev.data_hora)) : ev.data_hora,
+            venue: ev.local + (ev.endereco ? ' · ' + ev.endereco : ''),
+            dist: parseFloat((Math.random()*8+0.5).toFixed(1)),
+            going: String(ev.going_count || Math.floor(Math.random()*400+50)),
+            price: ev.preco || 'Grátis',
+            source: ev.fonte || 'EventosPt',
+            url: ev.url_ingresso || null,
+            c1: ev.cor1 || '#0e1118', c2: ev.cor2 || '#312e81',
+            recommended: ev.recomendado || false,
+            tags: [ev.genero], fromDB: true
           };
-          if (!EVENTS.find(function(e){ return e.id===c.id; })) EVENTS.push(c);
+          if (!EVENTS.find(function(e){ return e.id === converted.id; })) EVENTS.push(converted);
         });
         if (typeof applyFilters==='function') applyFilters();
-      } catch(err) { console.warn('loadDBEvents:',err.message); }
+      } catch(err) { console.warn('Eventos:', err.message); }
     };
 
+    window._supabase = client;
   }
   initSB();
-})();
-</script>
+})();</script>
+<script src="patch.js"></script>
 </body>
 </html>
