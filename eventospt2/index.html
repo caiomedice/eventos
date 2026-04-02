@@ -3161,13 +3161,13 @@ var currentUser = null;
 window.addEventListener('DOMContentLoaded', () => {
   getLocation();
   startLiveClock();
-  // Supabase onAuthStateChange (supabase-integration.js) trata a navegação
-  // Fallback: se após 4s ainda estiver no splash, vai para auth
+  // Fallback: se após 3s ainda estiver no splash, vai para auth
   setTimeout(() => {
     if (document.getElementById('splash')?.classList.contains('active')) {
+      console.warn('⚠️ Fallback: splash timeout → auth');
       showScreen('auth');
     }
-  }, 4000);
+  }, 3000);
   document.getElementById('splash')?.addEventListener('click', () => {
     if (document.getElementById('splash')?.classList.contains('active')) {
       showScreen('auth');
@@ -5451,6 +5451,10 @@ function showToast(msg) {
     client.auth.onAuthStateChange(async function(event, session) {
       currentUser = session ? session.user : null;
       if (currentUser) {
+        // ── Navega IMEDIATAMENTE para o app — nunca fica preso ──
+        if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
+
+        // Carrega dados em background (sem bloquear a navegação)
         try {
           var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS' : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
           client.from('user_sessions').insert({ user_id: currentUser.id, dispositivo: disp });
@@ -5469,8 +5473,9 @@ function showToast(msg) {
           }
         } catch(e) {}
         if (typeof checkAdmin === 'function') checkAdmin(currentUser);
-        if (typeof loadDBEvents === 'function') await loadDBEvents();
-        if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
+        if (typeof loadDBEvents === 'function') {
+          loadDBEvents().catch(function(){});
+        }
       } else {
         if (typeof showScreen === 'function') showScreen('auth');
       }
