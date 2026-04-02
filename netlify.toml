@@ -1,0 +1,10 @@
+[build]
+  publish = "eventospt2"
+
+[build.processing]
+  skip_processing = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "index"
