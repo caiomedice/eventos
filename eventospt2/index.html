@@ -3148,99 +3148,7 @@ function timeUntil(dateObj) {
 // ===================== DATA =====================
 // Events are built relative to NOW so they are ALWAYS in the future.
 // daysFromToday=0 → today, 1 → tomorrow, etc.
-const EVENTS = [
-  {
-    id:0, name:'Neon Underground Festival', genre:'Eletrônico', category:'music', emoji:'🎧',
-    dateObj: makeDate(0, 23, 0),
-    venue:'Club Ultra, Porto', dist:2.3, going:'1.2k', price:'€ 40',
-    source:'Instagram · IA', c1:'#1a0a2e', c2:'#4c1d95', recommended:true,
-    tags:['Música','🤖 IA','🔥 Hot']
-  },
-  {
-    id:1, name:'Concerto de Jazz ao Vivo', genre:'Jazz', category:'music', emoji:'🎷',
-    dateObj: makeDate(1, 21, 0),
-    venue:'Hot Five Jazz Club, Porto', dist:1.8, going:'320', price:'€ 15',
-    source:'Sites', c1:'#0a0f1a', c2:'#1e3a5f', recommended:false,
-    tags:['Música']
-  },
-  {
-    id:2, name:'Mercado de Produtores do Porto', genre:'Mercado Gourmet', category:'food', emoji:'🥗',
-    dateObj: makeDate(0, 10, 0),
-    venue:'Mercado do Bom Sucesso, Porto', dist:3.1, going:'850', price:'Grátis',
-    source:'Facebook · IA', c1:'#0f1a00', c2:'#365314', recommended:true,
-    tags:['Gastronomia','🔥 Hot']
-  },
-  {
-    id:3, name:'Prova de Vinhos do Douro', genre:'Enologia', category:'food', emoji:'🍷',
-    dateObj: makeDate(2, 19, 0),
-    venue:'Wine Quay Bar, Ribeira', dist:2.6, going:'180', price:'€ 25',
-    source:'Flyer · OCR', c1:'#1a0505', c2:'#7f1d1d', recommended:false,
-    tags:['Gastronomia','🤖 IA']
-  },
-  {
-    id:4, name:'Exposição — Arte Contemporânea', genre:'Exposição', category:'culture', emoji:'🖼️',
-    dateObj: makeDate(1, 14, 0),
-    venue:'Fundação Serralves, Porto', dist:4.4, going:'640', price:'€ 12',
-    source:'Sites', c1:'#0a0a1a', c2:'#1e1e3f', recommended:true,
-    tags:['Cultura','🤖 IA']
-  },
-  {
-    id:5, name:'Stand-up Comedy Night', genre:'Comédia', category:'culture', emoji:'🎤',
-    dateObj: makeDate(3, 22, 0),
-    venue:'Maus Hábitos, Porto', dist:2.1, going:'210', price:'€ 10',
-    source:'Instagram · IA', c1:'#1a1000', c2:'#713f12', recommended:false,
-    tags:['Cultura','🔥 Hot']
-  },
-  {
-    id:6, name:'Festival de Gastronomia Portuguesa', genre:'Festival Gastronômico', category:'food', emoji:'🍽️',
-    dateObj: makeDate(4, 12, 0),
-    venue:'Parque da Cidade, Porto', dist:5.8, going:'2.3k', price:'Grátis',
-    source:'Flyer · OCR', c1:'#1a0f00', c2:'#92400e', recommended:true,
-    tags:['Gastronomia','🤖 IA','🔥 Hot']
-  },
-  {
-    id:7, name:'Peça de Teatro — O Ultimo Acto', genre:'Teatro', category:'culture', emoji:'🎭',
-    dateObj: makeDate(5, 21, 30),
-    venue:'Teatro Nacional São João', dist:3.8, going:'480', price:'€ 18',
-    source:'Sites', c1:'#1a0a1a', c2:'#4a1942', recommended:false,
-    tags:['Cultura']
-  },
-  {
-    id:8, name:'Rock in Porto', genre:'Rock', category:'music', emoji:'🎸',
-    dateObj: makeDate(6, 20, 0),
-    venue:'Pavilhão Rosa Mota, Porto', dist:3.4, going:'1.8k', price:'€ 35',
-    source:'Instagram · IA', c1:'#0a0a0f', c2:'#1e1e3f', recommended:true,
-    tags:['Música','🔥 Hot']
-  },
-  {
-    id:9, name:'Noite de Fado — Alma Portuguesa', genre:'Fado', category:'music', emoji:'🎶',
-    dateObj: makeDate(2, 21, 30),
-    venue:'Casa do Fado, Porto', dist:1.5, going:'180', price:'€ 12',
-    source:'Sites', c1:'#0f0a00', c2:'#422006', recommended:true,
-    tags:['Música']
-  },
-  {
-    id:10, name:'Sertanejo ao Vivo', genre:'Sertanejo', category:'music', emoji:'🤠',
-    dateObj: makeDate(3, 22, 0),
-    venue:'Arena Show, Matosinhos', dist:4.2, going:'920', price:'€ 20',
-    source:'Facebook · IA', c1:'#1a1200', c2:'#713f12', recommended:false,
-    tags:['Música']
-  },
-  {
-    id:11, name:'Orquestra do Porto — Beethoven', genre:'Clássica', category:'music', emoji:'🎻',
-    dateObj: makeDate(5, 19, 0),
-    venue:'Casa da Música, Porto', dist:2.8, going:'540', price:'€ 22',
-    source:'Sites', c1:'#0a0f1a', c2:'#1e3a5f', recommended:false,
-    tags:['Música','🤖 IA']
-  },
-  {
-    id:12, name:'Música Portuguesa — Vozes do Norte', genre:'Música Portuguesa', category:'music', emoji:'🇵🇹',
-    dateObj: makeDate(4, 20, 30),
-    venue:'Coliseu do Porto', dist:1.9, going:'760', price:'€ 15',
-    source:'Flyer · OCR', c1:'#0a0f0a', c2:'#14532d', recommended:true,
-    tags:['Música','🔥 Hot']
-  },
-];
+const EVENTS = [];
 
 // Inject formatted date string dynamically
 EVENTS.forEach(ev => { ev.date = formatEventDate(ev.dateObj); });
@@ -5299,10 +5207,10 @@ async function loadAdminStats() {
 // ── Eventos pendentes ─────────────────────────────────
 async function loadPendingEvents() {
   const list = document.getElementById('admin-pending-list');
-  const db = window._supabase;
+  const db = window._supabase || window.db;
   if (!db) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">⚠️ A ligar ao Supabase...</div>';
-    setTimeout(loadPendingEvents, 1500);
+    setTimeout(loadPendingEvents, 2000);
     return;
   }
   list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">🔄 A carregar...</div>';
@@ -5350,7 +5258,7 @@ async function moderateEvent(id, status) {
 }
 
 async function adminAddEvent() {
-  const db = window._supabase;
+  const db = window._supabase || window.db;
   if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
   const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
   const data     = document.getElementById('admin-ev-data')?.value;
@@ -5383,7 +5291,8 @@ async function adminAddEvent() {
 
 // ── Lista de utilizadores ─────────────────────────────
 async function loadAdminUsers() {
-  if (!window._supabase) return;
+  const db = window._supabase || window.db;
+  if (!db) return;
   const list = document.getElementById('admin-users-list');
   try {
     const { data } = await window._supabase
