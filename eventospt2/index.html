@@ -5455,8 +5455,26 @@ function showToast(msg) {
     window.__sb_client = client;
     console.log('✅ Supabase ligado');
 
+    // Logout disponível imediatamente, antes de qualquer evento de auth
+    window.logout = async function() {
+      try { await client.auth.signOut(); } catch(e) {}
+      currentUser = null;
+      showToast('👋 Até logo!');
+      showScreen('auth');
+    };
+
     client.auth.onAuthStateChange(async function(event, session) {
+      // INITIAL_SESSION = sessão restaurada ao abrir a app — NÃO navega automaticamente
+      // Só navega em SIGNED_IN (login activo) ou SIGNED_OUT
+      if (event === 'INITIAL_SESSION') return;
+
       currentUser = session ? session.user : null;
+
+      if (event === 'SIGNED_OUT') {
+        if (typeof showScreen === 'function') showScreen('auth');
+        return;
+      }
+
       if (currentUser) {
         // Navega IMEDIATAMENTE — nunca fica preso no ecrã de loading
         if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
@@ -5481,8 +5499,6 @@ function showToast(msg) {
         } catch(e) {}
         if (typeof checkAdmin === 'function') checkAdmin(currentUser);
         if (typeof loadDBEvents === 'function') loadDBEvents().catch(function(){});
-      } else {
-        if (typeof showScreen === 'function') showScreen('auth');
       }
     });
 
@@ -5521,13 +5537,6 @@ function showToast(msg) {
         showToast('❌ ' + (err.message || 'Erro'));
         if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
       }
-    };
-
-    window.logout = async function() {
-      await client.auth.signOut();
-      currentUser = null;
-      showToast('👋 Até logo!');
-      setTimeout(function(){ showScreen('auth'); }, 600);
     };
 
     window.loadDBEvents = async function() {
