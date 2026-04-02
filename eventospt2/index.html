@@ -3153,9 +3153,9 @@ const EVENTS = [];
 // Inject formatted date string dynamically
 EVENTS.forEach(ev => { ev.date = formatEventDate(ev.dateObj); });
 
-let currentGenre = 'todos';
+var currentGenre = 'todos';
 let favorites = JSON.parse(localStorage.getItem('ep_favs') || '[]');
-let currentUser = null;
+var currentUser = null;
 
 // ===================== INIT =====================
 window.addEventListener('DOMContentLoaded', () => {
@@ -3280,7 +3280,7 @@ function doLogin() {
 }
 
 // ===================== TERMOS =====================
-let termosAceitos = false;
+var termosAceitos = false;
 
 function toggleTermosCheck() {
   termosAceitos = !termosAceitos;
@@ -3337,7 +3337,7 @@ function shakeInput(id) {
 
 // ===================== LOCATION =====================
 // ===================== GEOLOCALIZAÇÃO =====================
-let userLocation = {
+var userLocation = {
   lat: null,
   lng: null,
   cidade: null,
@@ -3834,10 +3834,10 @@ function setNav(el, screen) {
 }
 
 // ===================== AI MODAL =====================
-let fetchedRealEvents = [];   // events returned by the real API call
-let selectedSearchGenre  = 'qualquer';
-let selectedSearchPeriod = 'semana';  // hoje | semana | mes
-let selectedSearchRadius = 5;         // km
+var fetchedRealEvents = [];   // events returned by the real API call
+var selectedSearchGenre  = 'qualquer';
+var selectedSearchPeriod = 'semana';  // hoje | semana | mes
+var selectedSearchRadius = 5;         // km
 
 function updateSearchRadius(val) {
   selectedSearchRadius = parseInt(val);
@@ -4028,7 +4028,7 @@ Hoje é ${today}. Retorna APENAS este JSON:
 }
 
 // ── MANUAL EVENT ──────────────────────────────────────────
-let manualRecorrente = 'nao';
+var manualRecorrente = 'nao';
 
 function toggleManualRecorrente(el, val) {
   document.querySelectorAll('#manual-recorrente-chips .chip').forEach(c => c.classList.remove('active'));
@@ -4141,7 +4141,7 @@ function loadManualEvents() {
 }
 
 // ── Animate the step indicators while loading ──────────────
-let stepInterval = null;
+var stepInterval = null;
 function animateSteps() {
   const steps = ['step1','step2','step3','step4','step5','step6'];
   let i = 0;
@@ -4612,7 +4612,7 @@ const EVENT_COORDS = {
   11: { lat: 41.1300, lng: -8.6100, address: 'Bar do Zé, Av. da República, Gaia' },
 };
 
-let currentEventId = 0;
+var currentEventId = 0;
 
 function getCoords(id) {
   return EVENT_COORDS[id] || { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
@@ -4942,8 +4942,8 @@ function detectCategory(genre) {
 }
 
 // ===================== ADMIN PANEL =====================
-const ADMIN_EMAIL = 'caioc.medice@gmail.com'; // <- o teu email de admin
-let isAdmin = false;
+var ADMIN_EMAIL = 'caioc.medice@gmail.com'; // <- o teu email de admin
+var isAdmin = false;
 
 function checkAdmin(user) {
   isAdmin = user?.email === ADMIN_EMAIL;
@@ -4980,7 +4980,7 @@ function switchAdminTab(tab) {
 // ─── INSIGHTS ────────────────────────────────────────────
 
 // Estado dos filtros
-let insightState = { cat: 'todas', sub: 'todos', period: 'sempre' };
+var insightState = { cat: 'todas', sub: 'todos', period: 'sempre' };
 
 // Subgéneros por categoria
 const INSIGHT_SUBGENRES = {
@@ -5432,8 +5432,8 @@ const db = createClient(
 window._supabase = db;
 console.log('✅ Supabase ligado —', window.SUPABASE_URL);
 
-let currentUser  = null;
-let favoritesIds = [];
+var currentUser = null;
+var favoritesIds = [];
 
 db.auth.onAuthStateChange(async (event, session) => {
   currentUser = session?.user ?? null;
