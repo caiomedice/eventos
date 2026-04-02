@@ -3261,6 +3261,21 @@ function switchTab(tab) {
   document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
 }
 
+
+function getDB() {
+  if (getDB()) return getDB();
+  if (typeof db !== 'undefined' && db) return db;
+  // Criar novo cliente se necessário
+  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_KEY) {
+    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+    getDB() = client;
+    return client;
+  }
+  return null;
+}
+
 async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-pass').value;
@@ -3274,7 +3289,7 @@ async function doLogin() {
   if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
 
   try {
-    const client = window._supabase || db;
+    const client = getDB();
     if (!client) throw new Error('Supabase não inicializado');
     const { error } = await client.auth.signInWithPassword({ email, password: pass });
     if (error) throw error;
@@ -5166,36 +5181,36 @@ function sendNotification() {
 
 // ── Estatísticas ──────────────────────────────────────
 async function loadAdminStats() {
-  if (!window._supabase) return;
+  if (!getDB()) return;
   try {
     // Total utilizadores via profiles
-    const { count: totalUsers } = await window._supabase
+    const { count: totalUsers } = await getDB()
       .from('profiles').select('*', { count: 'exact', head: true });
 
     // Novos hoje
     const today = new Date(); today.setHours(0,0,0,0);
-    const { count: newToday } = await window._supabase
+    const { count: newToday } = await getDB()
       .from('profiles').select('*', { count: 'exact', head: true })
       .gte('criado_em', today.toISOString());
 
     // Novos esta semana
     const week = new Date(); week.setDate(week.getDate() - 7);
-    const { count: newWeek } = await window._supabase
+    const { count: newWeek } = await getDB()
       .from('profiles').select('*', { count: 'exact', head: true })
       .gte('criado_em', week.toISOString());
 
     // Acessos hoje
-    const { count: accessToday } = await window._supabase
+    const { count: accessToday } = await getDB()
       .from('user_sessions').select('*', { count: 'exact', head: true })
       .gte('entrou_em', today.toISOString());
 
     // Eventos aprovados
-    const { count: approved } = await window._supabase
+    const { count: approved } = await getDB()
       .from('events').select('*', { count: 'exact', head: true })
       .eq('status', 'approved');
 
     // Eventos pendentes
-    const { count: pending } = await window._supabase
+    const { count: pending } = await getDB()
       .from('events').select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
 
@@ -5216,7 +5231,7 @@ async function loadAdminStats() {
 // ── Eventos pendentes ─────────────────────────────────
 async function loadPendingEvents() {
   const list = document.getElementById('admin-pending-list');
-  const db = window._supabase || window.db;
+  const _db = getDB();
   if (!db) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">⚠️ A ligar ao Supabase...</div>';
     setTimeout(loadPendingEvents, 2000);
@@ -5257,9 +5272,9 @@ async function loadPendingEvents() {
 }
 
 async function moderateEvent(id, status) {
-  if (!window._supabase) return;
+  if (!getDB()) return;
   try {
-    await window._supabase.from('events').update({ status }).eq('id', id);
+    await getDB().from('events').update({ status }).eq('id', id);
     showToast(status === 'approved' ? '✅ Evento aprovado e publicado!' : '❌ Evento rejeitado');
     loadPendingEvents();
     loadAdminStats();
@@ -5267,7 +5282,7 @@ async function moderateEvent(id, status) {
 }
 
 async function adminAddEvent() {
-  const db = window._supabase || window.db;
+  const _db = getDB();
   if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
   const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
   const data     = document.getElementById('admin-ev-data')?.value;
@@ -5300,11 +5315,11 @@ async function adminAddEvent() {
 
 // ── Lista de utilizadores ─────────────────────────────
 async function loadAdminUsers() {
-  const db = window._supabase || window.db;
+  const _db = getDB();
   if (!db) return;
   const list = document.getElementById('admin-users-list');
   try {
-    const { data } = await window._supabase
+    const { data } = await getDB()
       .from('profiles')
       .select('*')
       .order('criado_em', { ascending: false })
@@ -5332,9 +5347,9 @@ async function loadAdminUsers() {
 
 // ── Notificações de pendentes ─────────────────────────
 async function loadAdminNotifications() {
-  if (!window._supabase || !isAdmin) return;
+  if (!getDB() || !isAdmin) return;
   try {
-    const { count } = await window._supabase
+    const { count } = await getDB()
       .from('events').select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
     const dot = document.getElementById('notif-dot');
@@ -5438,7 +5453,7 @@ const db = createClient(
   { auth: { persistSession: true, autoRefreshToken: true } }
 );
 
-window._supabase = db;
+getDB() = db;
 console.log('✅ Supabase ligado —', window.SUPABASE_URL);
 
 var currentUser = null;
