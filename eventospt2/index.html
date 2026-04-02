@@ -3164,7 +3164,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // Fallback: se após 3s ainda estiver no splash, vai para auth
   setTimeout(() => {
     if (document.getElementById('splash')?.classList.contains('active')) {
-      console.warn('⚠️ Fallback: splash timeout → auth');
       showScreen('auth');
     }
   }, 3000);
@@ -3279,7 +3278,7 @@ async function doLogin() {
   if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
 
   try {
-    const client = typeof db !== 'undefined' && db ? db : getDB();
+    const client = getDB();
     if (!client) throw new Error('Supabase não inicializado');
     const { error } = await client.auth.signInWithPassword({ email, password: pass });
     if (error) throw error;
@@ -3333,9 +3332,17 @@ function aceitarTermos() {
   showToast('✅ Termos aceites!');
 }
 
-// doSignup — gerido pelo supabase-integration.js
+// doSignup — definido no bloco Supabase abaixo (window.doSignup)
 
-// googleLogin — gerido pelo supabase-integration.js
+async function googleLogin() {
+  const client = getDB();
+  if (!client) { showToast('⚠️ Supabase não inicializado'); return; }
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin }
+  });
+  if (error) showToast('❌ Erro Google: ' + error.message);
+}
 
 function shakeInput(id) {
   const el = document.getElementById(id);
@@ -3347,7 +3354,7 @@ function shakeInput(id) {
   setTimeout(() => { el.style.borderColor = ''; el.style.animation = ''; }, 1500);
 }
 
-// logout — gerido pelo supabase-integration.js
+// logout — definido no bloco Supabase abaixo (window.logout)
 
 // ===================== LOCATION =====================
 // ===================== GEOLOCALIZAÇÃO =====================
@@ -5273,7 +5280,7 @@ async function moderateEvent(id, status) {
 
 async function adminAddEvent() {
   const _db = getDB();
-  if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
+  if (!_db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
   const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
   const data     = document.getElementById('admin-ev-data')?.value;
   const hora     = document.getElementById('admin-ev-hora')?.value || '22:00';
@@ -5287,7 +5294,7 @@ async function adminAddEvent() {
 
   try {
     const dataHora = new Date(`${data}T${hora}`).toISOString();
-    const { error } = await client.from('events').insert({
+    const { error } = await _db.from('events').insert({
       nome, genero: genero || 'Evento', data_hora: dataHora,
       local, endereco: endereco || null,
       preco: preco || 'Grátis', url_ingresso: url || null,
@@ -5306,7 +5313,7 @@ async function adminAddEvent() {
 // ── Lista de utilizadores ─────────────────────────────
 async function loadAdminUsers() {
   const _db = getDB();
-  if (!db) return;
+  if (!_db) return;
   const list = document.getElementById('admin-users-list');
   try {
     const { data } = await getDB()
@@ -5451,10 +5458,10 @@ function showToast(msg) {
     client.auth.onAuthStateChange(async function(event, session) {
       currentUser = session ? session.user : null;
       if (currentUser) {
-        // ── Navega IMEDIATAMENTE para o app — nunca fica preso ──
+        // Navega IMEDIATAMENTE — nunca fica preso no ecrã de loading
         if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
 
-        // Carrega dados em background (sem bloquear a navegação)
+        // Dados secundários em background (não bloqueiam a navegação)
         try {
           var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS' : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
           client.from('user_sessions').insert({ user_id: currentUser.id, dispositivo: disp });
@@ -5473,9 +5480,7 @@ function showToast(msg) {
           }
         } catch(e) {}
         if (typeof checkAdmin === 'function') checkAdmin(currentUser);
-        if (typeof loadDBEvents === 'function') {
-          loadDBEvents().catch(function(){});
-        }
+        if (typeof loadDBEvents === 'function') loadDBEvents().catch(function(){});
       } else {
         if (typeof showScreen === 'function') showScreen('auth');
       }
