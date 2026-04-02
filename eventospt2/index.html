@@ -4624,47 +4624,54 @@ const EVENT_COORDS = {
 var currentEventId = 0;
 
 function getCoords(id) {
-  return EVENT_COORDS[id] || { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
+  return EVENT_COORDS[id] || { lat: null, lng: null, address: 'Porto, Portugal' };
 }
 
 function openWaze(e) {
   e.preventDefault();
-  const { lat, lng } = getCoords(currentEventId);
-  const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&zoom=17`;
+  const c = getCoords(currentEventId);
+  const query = encodeURIComponent(c.address);
+  // Se tiver coordenadas usa-as; senão faz search pelo nome do endereço
+  const url = (c.lat && c.lng)
+    ? `https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes&zoom=17`
+    : `https://waze.com/ul?q=${query}&navigate=yes`;
   showToast('🚗 A abrir o Waze...');
-  setTimeout(() => window.open(url, '_blank'), 400);
+  setTimeout(() => window.open(url, '_blank'), 300);
 }
 
 function openGoogleMaps(e) {
   e.preventDefault();
-  const { lat, lng, address } = getCoords(currentEventId);
-  const dest = encodeURIComponent(address);
-  // Try native app first, fallback to web
-  const nativeUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
-  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  const c = getCoords(currentEventId);
+  const query = encodeURIComponent(c.address);
+  const dest = (c.lat && c.lng) ? `${c.lat},${c.lng}` : query;
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
   showToast('🗺 A abrir o Google Maps...');
-  setTimeout(() => {
-    // On mobile try deep link, else web
-    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-    window.open(isMobile ? `https://maps.google.com/?daddr=${lat},${lng}` : webUrl, '_blank');
-  }, 400);
+  setTimeout(() => window.open(url, '_blank'), 300);
 }
 
 function openAppleMaps(e) {
   e.preventDefault();
-  const { lat, lng, address } = getCoords(currentEventId);
-  const dest = encodeURIComponent(address);
-  const url = `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
+  const c = getCoords(currentEventId);
+  const query = encodeURIComponent(c.address);
+  const url = (c.lat && c.lng)
+    ? `https://maps.apple.com/?daddr=${c.lat},${c.lng}&dirflg=d`
+    : `https://maps.apple.com/?q=${query}&dirflg=d`;
   showToast('🍎 A abrir o Apple Maps...');
-  setTimeout(() => window.open(url, '_blank'), 400);
+  setTimeout(() => window.open(url, '_blank'), 300);
 }
 
 function copyAddress() {
-  const { address } = getCoords(currentEventId);
+  const c = getCoords(currentEventId);
+  const text = c.address;
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(address).then(() => showToast('📋 Endereço copiado!'));
+    navigator.clipboard.writeText(text).then(() => showToast('📋 Endereço copiado!'));
   } else {
-    showToast('📋 ' + address);
+    // fallback para browsers antigos
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('📋 Endereço copiado!'); } catch(e) { showToast('📋 ' + text); }
+    document.body.removeChild(ta);
   }
 }
 
@@ -4689,9 +4696,16 @@ function shareEvent() {
 
 function updateMapForEvent(id) {
   const c = getCoords(id);
-  const delta = 0.025;
-  const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
+  var src;
+  if (c.lat && c.lng) {
+    const delta = 0.025;
+    const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
+    src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
+  } else {
+    // Sem coordenadas — mostra mapa de pesquisa pelo endereço
+    const q = encodeURIComponent(c.address);
+    src = `https://www.openstreetmap.org/export/embed.html?query=${q}&layer=mapnik`;
+  }
   document.getElementById('detail-map-iframe').src = src;
   document.getElementById('detail-map-iframe').style.pointerEvents = 'none';
   document.getElementById('map-overlay').classList.remove('hidden');
@@ -5557,13 +5571,31 @@ function showToast(msg) {
 
     window.loadDBEvents = async function() {
       try {
+        // Carrega eventos aprovados desde 30min atrás até 30 dias no futuro
+        var agora = new Date(Date.now() - 30*60*1000).toISOString();
+        var limite = new Date(Date.now() + 30*24*60*60*1000).toISOString();
         var r = await client.from('events').select('*').eq('status','approved')
-          .gt('data_hora', new Date(Date.now() - 30*60*1000).toISOString())
-          .order('data_hora', { ascending: true }).limit(100);
+          .gt('data_hora', agora)
+          .lt('data_hora', limite)
+          .order('data_hora', { ascending: true }).limit(200);
         if (r.error || !r.data || !r.data.length) return;
         r.data.forEach(function(ev) {
+          // Endereço completo para navegação
+          var fullAddress = ev.endereco
+            ? ev.local + ', ' + ev.endereco
+            : ev.local + ', Portugal';
+
+          // Guardar coordenadas/endereço para Waze, Maps, copiar
+          // Se a BD tiver lat/lng usa; senão guarda só o texto para search
+          EVENT_COORDS[ev.id] = {
+            lat:  ev.lat  || null,
+            lng:  ev.lng  || null,
+            address: fullAddress
+          };
+
           var converted = {
             id: ev.id, name: ev.nome, genre: ev.genero,
+            category: ev.categoria || 'music',
             emoji: ev.emoji || '🎉',
             dateObj: new Date(ev.data_hora),
             date: typeof formatEventDate==='function' ? formatEventDate(new Date(ev.data_hora)) : ev.data_hora,
@@ -5580,6 +5612,7 @@ function showToast(msg) {
           if (!EVENTS.find(function(e){ return e.id === converted.id; })) EVENTS.push(converted);
         });
         if (typeof applyFilters==='function') applyFilters();
+        console.log('✅ ' + r.data.length + ' eventos carregados');
       } catch(err) { console.warn('loadDBEvents:', err.message); }
     };
 
