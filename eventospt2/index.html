@@ -2885,6 +2885,18 @@
         <div class="form-label">🔗 Link do evento</div>
         <input class="form-input" id="manual-url" type="url" placeholder="Instagram, Facebook, Sympla...">
       </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <div class="form-label">📝 Descrição do evento</div>
+        <textarea class="form-input" id="manual-descricao" rows="3" placeholder="Descreve o evento, artistas, ambiente..." style="resize:vertical;min-height:80px;"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <div class="form-label">📸 Link de foto (opcional)</div>
+        <input class="form-input" id="manual-foto" type="url" placeholder="https://... link direto para imagem">
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <div class="form-label">🎬 Link de vídeo YouTube (opcional)</div>
+        <input class="form-input" id="manual-video" type="url" placeholder="https://youtube.com/watch?v=...">
+      </div>
       <div class="form-group" style="margin-bottom:14px;">
         <div class="form-label">🔄 É evento recorrente?</div>
         <div style="display:flex;gap:8px;margin-top:6px;" id="manual-recorrente-chips">
@@ -2977,6 +2989,9 @@
           <input class="form-input" id="admin-ev-preco" placeholder="Preço" style="font-size:13px;">
         </div>
         <input class="form-input" id="admin-ev-url" placeholder="Link (opcional)" style="font-size:13px;margin-bottom:8px;">
+        <textarea class="form-input" id="admin-ev-descricao" placeholder="Descrição do evento (opcional)" rows="2" style="font-size:13px;margin-bottom:8px;resize:vertical;"></textarea>
+        <input class="form-input" id="admin-ev-foto" type="url" placeholder="URL de foto (opcional)" style="font-size:13px;margin-bottom:8px;">
+        <input class="form-input" id="admin-ev-video" type="url" placeholder="URL YouTube (opcional)" style="font-size:13px;margin-bottom:8px;">
         <button onclick="adminAddEvent()" class="btn-primary" style="width:100%;padding:11px;font-size:13px;">
           ✅ Publicar evento
         </button>
@@ -3161,13 +3176,13 @@ var currentUser = null;
 window.addEventListener('DOMContentLoaded', () => {
   getLocation();
   startLiveClock();
-  // Fallback de segurança: se o Supabase demorar mais de 3s a responder,
-  // o splash sai e vai para auth. O onAuthStateChange trata o resto.
+  // Supabase onAuthStateChange (supabase-integration.js) trata a navegação
+  // Fallback: se após 4s ainda estiver no splash, vai para auth
   setTimeout(() => {
     if (document.getElementById('splash')?.classList.contains('active')) {
       showScreen('auth');
     }
-  }, 3000);
+  }, 4000);
   document.getElementById('splash')?.addEventListener('click', () => {
     if (document.getElementById('splash')?.classList.contains('active')) {
       showScreen('auth');
@@ -3267,24 +3282,29 @@ function getDB() {
 }
 
 async function doLogin() {
-  // Delega para window.doLogin definido no bloco Supabase
-  if (window.doLogin && window.doLogin !== doLogin) { window.doLogin(); return; }
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-pass').value;
-  if (!email) { shakeInput('login-email'); showToast('⚠️ Insere o teu email'); return; }
+
+  if (!email)               { shakeInput('login-email'); showToast('⚠️ Insere o teu email'); return; }
   if (!email.includes('@')) { shakeInput('login-email'); showToast('⚠️ Email inválido'); return; }
-  if (!pass)  { shakeInput('login-pass');  showToast('⚠️ Insere a tua senha'); return; }
-  const sb = getDB();
-  if (!sb) { showToast('⚠️ A ligar... tenta já a seguir'); return; }
+  if (!pass)                { shakeInput('login-pass');  showToast('⚠️ Insere a tua senha'); return; }
+  if (pass.length < 6)      { shakeInput('login-pass');  showToast('⚠️ Senha demasiado curta'); return; }
+
   const btn = document.querySelector('#login-form .btn-primary');
   if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
-  const r = await sb.auth.signInWithPassword({ email, password: pass });
-  if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
-  if (r.error) {
-    const msg = r.error.message || '';
+
+  try {
+    const client = typeof db !== 'undefined' && db ? db : getDB();
+    if (!client) throw new Error('Supabase não inicializado');
+    const { error } = await client.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+    showToast('✅ Bem-vindo de volta!');
+  } catch(e) {
+    const msg = e.message || '';
     if (msg.includes('Invalid login credentials')) showToast('❌ Email ou senha incorretos');
     else if (msg.includes('Email not confirmed')) showToast('❌ Confirma o teu email primeiro');
     else showToast('❌ ' + msg);
+    if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
   }
 }
 
@@ -4060,6 +4080,9 @@ function submitManualEvent() {
   const preco     = document.getElementById('manual-preco')?.value?.trim() || 'Grátis';
   const url       = document.getElementById('manual-url')?.value?.trim() || null;
   const freq      = document.getElementById('manual-frequencia')?.value?.trim() || '';
+  const descricao = document.getElementById('manual-descricao')?.value?.trim() || null;
+  const foto      = document.getElementById('manual-foto')?.value?.trim() || null;
+  const video     = document.getElementById('manual-video')?.value?.trim() || null;
 
   if (!nome)    { showToast('⚠️ Escreve o nome do evento');   return; }
   if (!dataVal) { showToast('⚠️ Escolhe a data do evento');   return; }
@@ -4074,13 +4097,11 @@ function submitManualEvent() {
     return;
   }
 
-  // Paleta de cores e emoji por categoria
   const catPalettes = {
     'music':   { c1:'#1a0a2e', c2:'#4c1d95', emoji:'🎵' },
     'culture': { c1:'#0a0a1a', c2:'#1e1e3f', emoji:'🎭' },
     'food':    { c1:'#1a0f00', c2:'#7c2d12', emoji:'🍽️' },
   };
-  // Refinamento de emoji pelo género específico
   const generoEmojis = {
     'jazz':'🎷','rock':'🎸','eletrônico':'🎧','fado':'🎶','clássica':'🎻',
     'teatro':'🎭','exposição':'🖼️','cinema':'🎬','comédia':'🤣','dança':'💃',
@@ -4090,48 +4111,29 @@ function submitManualEvent() {
   const genKey = Object.keys(generoEmojis).find(k => genero.toLowerCase().includes(k));
   const emoji = genKey ? generoEmojis[genKey] : pal.emoji;
 
-  const newId = Date.now();
-  const newEvent = {
-    id:          newId,
-    name:        nome,
-    genre:       genero,
-    category:    categoria,
-    emoji,
-    dateObj,
-    date:        formatEventDate(dateObj),
-    venue:       local + (endereco ? ` · ${endereco}` : ''),
-    dist:        userLocation.lat
-                   ? parseFloat((Math.random()*5+0.5).toFixed(1))
-                   : 0.5,
-    going:       '1',
-    price:       preco,
-    source:      'Adicionado por utilizador',
-    url,
-    c1:          pal.c1,
-    c2:          pal.c2,
-    recommended: false,
-    tags:        [genero, '👤 Manual'],
-    recorrente:  manualRecorrente !== 'nao' ? 'Sim' : 'Não',
-    frequencia:  freq,
-  };
+  // Envia para Supabase como pendente — admin aprova antes de aparecer a todos
+  const _db = window._supabase;
+  if (_db) {
+    _db.from('events').insert({
+      nome, genero, categoria,
+      data_hora: dateObj.toISOString(),
+      local, endereco: endereco || null,
+      preco, url_ingresso: url || null,
+      descricao: descricao || null,
+      url_foto: foto || null,
+      video_url: video || null,
+      emoji, cor1: pal.c1, cor2: pal.c2,
+      status: 'pending', fonte: 'Utilizador',
+    }).then(function(r){ if(r.error) console.warn('Evento pendente:', r.error.message); });
+  }
 
-  if (!EVENTS.find(e => e.id === newId)) EVENTS.push(newEvent);
-
-  const saved = JSON.parse(localStorage.getItem('ep_manual_events') || '[]');
-  saved.push({ ...newEvent, dateObj: newEvent.dateObj.toISOString() });
-  localStorage.setItem('ep_manual_events', JSON.stringify(saved));
-
-  ['manual-nome','manual-local','manual-endereco','manual-genero',
-   'manual-preco','manual-url','manual-frequencia','manual-data'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
+  ['manual-nome','manual-local','manual-endereco','manual-genero','manual-preco',
+   'manual-url','manual-frequencia','manual-data','manual-descricao','manual-foto','manual-video']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('manual-data').value = new Date().toISOString().split('T')[0];
 
   closeAIModal();
-  applyFilters();
-  updateFeaturedCard();
-  showToast(`✅ "${nome}" adicionado à lista!`);
+  showToast(`📨 "${nome}" enviado para aprovação pelo admin!`);
 }
 
 // Carrega eventos manuais guardados no localStorage
@@ -4629,48 +4631,37 @@ function getCoords(id) {
 
 function openWaze(e) {
   e.preventDefault();
-  const c = getCoords(currentEventId);
-  const query = encodeURIComponent(c.address);
-  // Se tiver coordenadas usa-as; senão faz search pelo nome do endereço
-  const url = (c.lat && c.lng)
-    ? `https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes&zoom=17`
-    : `https://waze.com/ul?q=${query}&navigate=yes`;
+  var c=getCoords(currentEventId), q=encodeURIComponent(c.address);
+  var url=(c.lat&&c.lng)?'https://waze.com/ul?ll='+c.lat+','+c.lng+'&navigate=yes&zoom=17':'https://waze.com/ul?q='+q+'&navigate=yes';
   showToast('🚗 A abrir o Waze...');
-  setTimeout(() => window.open(url, '_blank'), 300);
+  setTimeout(function(){ window.open(url,'_blank'); },300);
 }
 
 function openGoogleMaps(e) {
   e.preventDefault();
-  const c = getCoords(currentEventId);
-  const query = encodeURIComponent(c.address);
-  const dest = (c.lat && c.lng) ? `${c.lat},${c.lng}` : query;
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+  var c=getCoords(currentEventId);
+  var dest=(c.lat&&c.lng)?c.lat+','+c.lng:encodeURIComponent(c.address);
   showToast('🗺 A abrir o Google Maps...');
-  setTimeout(() => window.open(url, '_blank'), 300);
+  setTimeout(function(){ window.open('https://www.google.com/maps/dir/?api=1&destination='+dest+'&travelmode=driving','_blank'); },300);
 }
 
 function openAppleMaps(e) {
   e.preventDefault();
-  const c = getCoords(currentEventId);
-  const query = encodeURIComponent(c.address);
-  const url = (c.lat && c.lng)
-    ? `https://maps.apple.com/?daddr=${c.lat},${c.lng}&dirflg=d`
-    : `https://maps.apple.com/?q=${query}&dirflg=d`;
+  var c=getCoords(currentEventId), q=encodeURIComponent(c.address);
+  var url=(c.lat&&c.lng)?'https://maps.apple.com/?daddr='+c.lat+','+c.lng+'&dirflg=d':'https://maps.apple.com/?q='+q+'&dirflg=d';
   showToast('🍎 A abrir o Apple Maps...');
-  setTimeout(() => window.open(url, '_blank'), 300);
+  setTimeout(function(){ window.open(url,'_blank'); },300);
 }
 
 function copyAddress() {
-  const c = getCoords(currentEventId);
-  const text = c.address;
+  var c=getCoords(currentEventId);
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => showToast('📋 Endereço copiado!'));
+    navigator.clipboard.writeText(c.address).then(function(){ showToast('📋 Endereço copiado!'); });
   } else {
-    // fallback para browsers antigos
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    var ta=document.createElement('textarea');
+    ta.value=c.address; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); showToast('📋 Endereço copiado!'); } catch(e) { showToast('📋 ' + text); }
+    try { document.execCommand('copy'); showToast('📋 Endereço copiado!'); } catch(x){ showToast('📋 '+c.address); }
     document.body.removeChild(ta);
   }
 }
@@ -4695,21 +4686,17 @@ function shareEvent() {
 }
 
 function updateMapForEvent(id) {
-  const c = getCoords(id);
-  var src;
-  if (c.lat && c.lng) {
-    const delta = 0.025;
-    const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
-    src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
+  var c=getCoords(id), src;
+  if (c.lat&&c.lng) {
+    var d=0.025;
+    src='https://www.openstreetmap.org/export/embed.html?bbox='+(c.lng-d)+','+(c.lat-d)+','+(c.lng+d)+','+(c.lat+d)+'&layer=mapnik&marker='+c.lat+','+c.lng;
   } else {
-    // Sem coordenadas — mostra mapa de pesquisa pelo endereço
-    const q = encodeURIComponent(c.address);
-    src = `https://www.openstreetmap.org/export/embed.html?query=${q}&layer=mapnik`;
+    src='https://www.openstreetmap.org/export/embed.html?query='+encodeURIComponent(c.address)+'&layer=mapnik';
   }
-  document.getElementById('detail-map-iframe').src = src;
-  document.getElementById('detail-map-iframe').style.pointerEvents = 'none';
+  document.getElementById('detail-map-iframe').src=src;
+  document.getElementById('detail-map-iframe').style.pointerEvents='none';
   document.getElementById('map-overlay').classList.remove('hidden');
-  document.getElementById('copy-address-text').textContent = c.address;
+  document.getElementById('copy-address-text').textContent=c.address;
 }
 
 
@@ -5283,14 +5270,17 @@ async function moderateEvent(id, status) {
 async function adminAddEvent() {
   const _db = getDB();
   if (!_db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
-  const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
-  const data     = document.getElementById('admin-ev-data')?.value;
-  const hora     = document.getElementById('admin-ev-hora')?.value || '22:00';
-  const local    = document.getElementById('admin-ev-local')?.value?.trim();
-  const endereco = document.getElementById('admin-ev-endereco')?.value?.trim();
-  const genero   = document.getElementById('admin-ev-genero')?.value?.trim();
-  const preco    = document.getElementById('admin-ev-preco')?.value?.trim();
-  const url      = document.getElementById('admin-ev-url')?.value?.trim();
+  const nome      = document.getElementById('admin-ev-nome')?.value?.trim();
+  const data      = document.getElementById('admin-ev-data')?.value;
+  const hora      = document.getElementById('admin-ev-hora')?.value || '22:00';
+  const local     = document.getElementById('admin-ev-local')?.value?.trim();
+  const endereco  = document.getElementById('admin-ev-endereco')?.value?.trim();
+  const genero    = document.getElementById('admin-ev-genero')?.value?.trim();
+  const preco     = document.getElementById('admin-ev-preco')?.value?.trim();
+  const url       = document.getElementById('admin-ev-url')?.value?.trim();
+  const descricao = document.getElementById('admin-ev-descricao')?.value?.trim();
+  const foto      = document.getElementById('admin-ev-foto')?.value?.trim();
+  const video     = document.getElementById('admin-ev-video')?.value?.trim();
 
   if (!nome || !data || !local) { showToast('⚠️ Preenche nome, data e local'); return; }
 
@@ -5300,12 +5290,15 @@ async function adminAddEvent() {
       nome, genero: genero || 'Evento', data_hora: dataHora,
       local, endereco: endereco || null,
       preco: preco || 'Grátis', url_ingresso: url || null,
+      descricao: descricao || null,
+      url_foto: foto || null,
+      video_url: video || null,
       status: 'approved', emoji: '🎉',
       cor1: '#0e1118', cor2: '#312e81',
     });
     if (error) throw error;
     showToast('✅ Evento publicado com sucesso!');
-    ['admin-ev-nome','admin-ev-local','admin-ev-endereco','admin-ev-genero','admin-ev-preco','admin-ev-url']
+    ['admin-ev-nome','admin-ev-local','admin-ev-endereco','admin-ev-genero','admin-ev-preco','admin-ev-url','admin-ev-descricao','admin-ev-foto','admin-ev-video']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     loadAdminStats();
     if (typeof loadDBEvents === 'function') loadDBEvents();
@@ -5441,13 +5434,10 @@ function showToast(msg) {
 // =====================</script>
 
 <script>
-// ── SUPABASE INIT ──────────────────────────────────────
-// Regra única: este bloco é a ÚNICA fonte de verdade para auth.
-// Não há outro ficheiro, não há duplicados.
 (function() {
   function initSB() {
     if (!window.supabase) { setTimeout(initSB, 100); return; }
-    if (window._supabase) return; // já inicializado, não repetir
+    if (window._supabase) return; // um único cliente — elimina o lock
 
     var client = window.supabase.createClient(
       'https://jqchhyhwoqnhumopcnip.supabase.co',
@@ -5455,165 +5445,112 @@ function showToast(msg) {
       { auth: { persistSession: true, autoRefreshToken: true } }
     );
     window._supabase = client;
-    console.log('✅ Supabase ligado');
 
-    // ── Carregar dados do utilizador em background (nunca bloqueia) ──
-    function carregarDadosUtilizador(user) {
-      // Sessão
-      try {
-        var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS'
-                 : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
-        client.from('user_sessions').insert({ user_id: user.id, dispositivo: disp });
-      } catch(e) {}
-
-      // Perfil
-      client.from('profiles').select('*').eq('id', user.id).single()
-        .then(function(res) {
-          if (!res.data) return;
-          var n = document.getElementById('profile-name');
-          var e = document.getElementById('profile-email');
-          if (n) n.textContent = res.data.nome || user.email.split('@')[0];
-          if (e) e.textContent = user.email || '';
-        }).catch(function(){});
-
-      // Favoritos
-      client.from('favorites').select('event_id').eq('user_id', user.id)
-        .then(function(res) {
-          if (res.data) favoritesIds = res.data.map(function(f){ return f.event_id; });
-        }).catch(function(){});
-
-      // Eventos da BD
-      window.loadDBEvents();
-
-      // Admin
-      if (typeof checkAdmin === 'function') checkAdmin(user);
-    }
-
-    // ── Único listener de auth — lógica clara e sem ambiguidade ──
+    // ── Auth ─────────────────────────────────────────────
     client.auth.onAuthStateChange(function(event, session) {
       currentUser = session ? session.user : null;
-
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // Login activo ou token renovado → app
-        showScreen('app');
-        if (typeof initApp === 'function') initApp();
-        carregarDadosUtilizador(currentUser);
-        return;
+      if (event === 'SIGNED_IN') {
+        showScreen('app'); if (typeof initApp==='function') initApp();
+        _dados(currentUser); return;
       }
-
-      if (event === 'SIGNED_OUT') {
-        // Logout → auth
-        currentUser = null;
-        showScreen('auth');
-        return;
-      }
-
+      if (event === 'SIGNED_OUT') { currentUser = null; showScreen('auth'); return; }
       if (event === 'INITIAL_SESSION') {
-        // App abriu: havia sessão guardada → app; não havia → auth
-        if (currentUser) {
-          showScreen('app');
-          if (typeof initApp === 'function') initApp();
-          carregarDadosUtilizador(currentUser);
-        } else {
-          showScreen('auth');
-        }
+        if (currentUser) { showScreen('app'); if (typeof initApp==='function') initApp(); _dados(currentUser); }
+        else showScreen('auth');
         return;
       }
     });
 
-    // ── Acções expostas globalmente ──
+    function _dados(user) {
+      try { client.from('user_sessions').insert({ user_id: user.id, dispositivo: /iPhone|iPad/i.test(navigator.userAgent)?'iOS':/Android/i.test(navigator.userAgent)?'Android':'Web' }); } catch(e){}
+      client.from('profiles').select('*').eq('id', user.id).single().then(function(r){
+        if (!r.data) return;
+        var n=document.getElementById('profile-name'), e=document.getElementById('profile-email');
+        if (n) n.textContent = r.data.nome || user.email.split('@')[0];
+        if (e) e.textContent = user.email || '';
+      }).catch(function(){});
+      client.from('favorites').select('event_id').eq('user_id', user.id).then(function(r){
+        if (r.data) favoritesIds = r.data.map(function(f){ return f.event_id; });
+      }).catch(function(){});
+      window.loadDBEvents();
+      if (typeof checkAdmin==='function') checkAdmin(user);
+    }
 
+    // ── Login ─────────────────────────────────────────────
     window.doLogin = async function() {
-      var email = (document.getElementById('login-email') || {}).value || '';
-      var pass  = (document.getElementById('login-pass')  || {}).value || '';
-      email = email.trim();
-      if (!email || !pass) { showToast('⚠️ Preenche email e senha'); return; }
+      var email = ((document.getElementById('login-email')||{}).value||'').trim();
+      var pass  = (document.getElementById('login-pass')||{}).value||'';
+      if (!email||!pass) { showToast('⚠️ Preenche email e senha'); return; }
       var btn = document.querySelector('#login-form .btn-primary');
-      if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
-      var r = await client.auth.signInWithPassword({ email: email, password: pass });
-      if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
+      if (btn) { btn.textContent='A entrar...'; btn.disabled=true; }
+      var r = await client.auth.signInWithPassword({ email:email, password:pass });
+      if (btn) { btn.textContent='Entrar no app'; btn.disabled=false; }
       if (r.error) {
-        var msg = r.error.message || '';
-        if (msg.includes('Invalid login')) showToast('❌ Email ou senha incorretos');
-        else if (msg.includes('not confirmed')) showToast('❌ Confirma o teu email primeiro');
-        else showToast('❌ ' + msg);
+        var m=r.error.message||'';
+        showToast(m.includes('Invalid login')?'❌ Email ou senha incorretos':m.includes('not confirmed')?'❌ Confirma o teu email':'❌ '+m);
       }
-      // em caso de sucesso o onAuthStateChange trata a navegação
     };
 
+    // ── Registo ───────────────────────────────────────────
     window.doSignup = async function() {
-      var nome  = (document.getElementById('signup-name')  || {}).value || '';
-      var email = (document.getElementById('signup-email') || {}).value || '';
-      var pass  = (document.getElementById('signup-pass')  || {}).value || '';
-      nome = nome.trim(); email = email.trim();
-      if (!nome || !email || !pass) { showToast('⚠️ Preenche todos os campos'); return; }
-      if (pass.length < 6) { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
+      var nome  = ((document.getElementById('signup-name') ||{}).value||'').trim();
+      var email = ((document.getElementById('signup-email')||{}).value||'').trim();
+      var pass  = (document.getElementById('signup-pass') ||{}).value||'';
+      if (!nome||!email||!pass) { showToast('⚠️ Preenche todos os campos'); return; }
+      if (pass.length<6) { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
       var btn = document.querySelector('#signup-form .btn-primary');
-      if (btn) { btn.textContent = 'A criar...'; btn.disabled = true; }
-      var r = await client.auth.signUp({ email: email, password: pass, options: { data: { full_name: nome } } });
-      if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
-      if (r.error) showToast('❌ ' + r.error.message);
+      if (btn) { btn.textContent='A criar...'; btn.disabled=true; }
+      var r = await client.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:nome } } });
+      if (btn) { btn.textContent='Criar conta grátis'; btn.disabled=false; }
+      if (r.error) showToast('❌ '+r.error.message);
       else showToast('🎉 Conta criada! Verifica o teu email.');
     };
 
+    // ── Logout ────────────────────────────────────────────
     window.logout = async function() {
       await client.auth.signOut().catch(function(){});
-      // o onAuthStateChange com SIGNED_OUT trata o resto
     };
 
+    // ── Google ────────────────────────────────────────────
     window.googleLogin = async function() {
-      var r = await client.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin }
-      });
-      if (r.error) showToast('❌ Erro Google: ' + r.error.message);
+      var r = await client.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:window.location.origin } });
+      if (r.error) showToast('❌ Erro Google: '+r.error.message);
     };
 
+    // ── Eventos: próximos 30 dias, todos os campos ────────
     window.loadDBEvents = async function() {
       try {
-        // Carrega eventos aprovados desde 30min atrás até 30 dias no futuro
-        var agora = new Date(Date.now() - 30*60*1000).toISOString();
-        var limite = new Date(Date.now() + 30*24*60*60*1000).toISOString();
+        var desde = new Date(Date.now()-30*60*1000).toISOString();
+        var ate   = new Date(Date.now()+30*24*60*60*1000).toISOString();
         var r = await client.from('events').select('*').eq('status','approved')
-          .gt('data_hora', agora)
-          .lt('data_hora', limite)
-          .order('data_hora', { ascending: true }).limit(200);
-        if (r.error || !r.data || !r.data.length) return;
+          .gt('data_hora',desde).lt('data_hora',ate)
+          .order('data_hora',{ascending:true}).limit(200);
+        if (r.error||!r.data||!r.data.length) return;
         r.data.forEach(function(ev) {
-          // Endereço completo para navegação
-          var fullAddress = ev.endereco
-            ? ev.local + ', ' + ev.endereco
-            : ev.local + ', Portugal';
-
-          // Guardar coordenadas/endereço para Waze, Maps, copiar
-          // Se a BD tiver lat/lng usa; senão guarda só o texto para search
-          EVENT_COORDS[ev.id] = {
-            lat:  ev.lat  || null,
-            lng:  ev.lng  || null,
-            address: fullAddress
+          // Regista endereço/coords para Waze, Maps, copiar
+          var addr = ev.local+(ev.endereco?', '+ev.endereco:'')+', Portugal';
+          EVENT_COORDS[ev.id] = { lat:ev.lat||null, lng:ev.lng||null, address:addr };
+          var c = {
+            id:ev.id, name:ev.nome, genre:ev.genero, category:ev.categoria||'music',
+            emoji:ev.emoji||'🎉',
+            dateObj:new Date(ev.data_hora),
+            date:typeof formatEventDate==='function'?formatEventDate(new Date(ev.data_hora)):ev.data_hora,
+            venue:ev.local+(ev.endereco?' · '+ev.endereco:''),
+            dist:parseFloat((Math.random()*8+0.5).toFixed(1)),
+            going:String(ev.going_count||Math.floor(Math.random()*400+50)),
+            price:ev.preco||'Grátis', source:ev.fonte||'EventosPt',
+            url:ev.url_ingresso||null,
+            c1:ev.cor1||'#0e1118', c2:ev.cor2||'#312e81',
+            recommended:ev.recomendado||false, tags:[ev.genero], fromDB:true,
+            // campos de media — mapeados da BD
+            descricao: ev.descricao||null,
+            fotos:     ev.url_foto ? [ev.url_foto] : [],
+            video:     ev.video_url||null,
           };
-
-          var converted = {
-            id: ev.id, name: ev.nome, genre: ev.genero,
-            category: ev.categoria || 'music',
-            emoji: ev.emoji || '🎉',
-            dateObj: new Date(ev.data_hora),
-            date: typeof formatEventDate==='function' ? formatEventDate(new Date(ev.data_hora)) : ev.data_hora,
-            venue: ev.local + (ev.endereco ? ' · ' + ev.endereco : ''),
-            dist: parseFloat((Math.random()*8+0.5).toFixed(1)),
-            going: String(ev.going_count || Math.floor(Math.random()*400+50)),
-            price: ev.preco || 'Grátis',
-            source: ev.fonte || 'EventosPt',
-            url: ev.url_ingresso || null,
-            c1: ev.cor1 || '#0e1118', c2: ev.cor2 || '#312e81',
-            recommended: ev.recomendado || false,
-            tags: [ev.genero], fromDB: true
-          };
-          if (!EVENTS.find(function(e){ return e.id === converted.id; })) EVENTS.push(converted);
+          if (!EVENTS.find(function(e){ return e.id===c.id; })) EVENTS.push(c);
         });
         if (typeof applyFilters==='function') applyFilters();
-        console.log('✅ ' + r.data.length + ' eventos carregados');
-      } catch(err) { console.warn('loadDBEvents:', err.message); }
+      } catch(err) { console.warn('loadDBEvents:',err.message); }
     };
 
   }
