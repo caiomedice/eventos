@@ -3263,17 +3263,15 @@ function switchTab(tab) {
 
 
 function getDB() {
-  if (getDB()) return getDB();
-  if (typeof db !== 'undefined' && db) return db;
-  // Criar novo cliente se necessário
-  if (window.supabase && window.SUPABASE_URL && window.SUPABASE_KEY) {
-    const client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true }
-    });
-    getDB() = client;
-    return client;
-  }
-  return null;
+  if (window.__sb_client) return window.__sb_client;
+  try {
+    window.__sb_client = window.supabase.createClient(
+      'https://jqchhyhwoqnhumopcnip.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4',
+      { auth: { persistSession: true, autoRefreshToken: true } }
+    );
+    return window.__sb_client;
+  } catch(e) { return null; }
 }
 
 async function doLogin() {
