@@ -308,12 +308,12 @@
     .ai-option:hover  { background: var(--surface3); }
     .icon-btn:hover   { background: var(--surface3); }
 
-    /* Modais — centrados na janela */
+    /* Modais — centrados na área de conteúdo (descontando sidebar de 260px) */
     .modal-overlay {
-      left: 0 !important;
+      left: 260px !important;
       transform: none !important;
-      width: 100% !important;
-      max-width: 100% !important;
+      width: calc(100% - 260px) !important;
+      max-width: calc(100% - 260px) !important;
     }
     .modal-sheet { max-width: 480px !important; margin: 0 auto; }
 
@@ -1856,6 +1856,14 @@
     flex-shrink: 0;
   }
 </style>
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  window.SUPABASE_URL = 'https://jqchhyhwoqnhumopcnip.supabase.co';
+  window.SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4';
+  window.ADMIN_EMAIL  = 'caioc.medice@gmail.com';
+</script>
 </head>
 <body>
 
@@ -2530,22 +2538,24 @@
 
   <div class="profile-section-title">⚙️ Configurações</div>
   <div class="profile-menu">
-    <div class="menu-item" onclick="showToast('🔔 Notificações configuradas!')">
+    <div class="menu-item" onclick="toggleNotificacoes(this)">
       <div class="menu-icon">🔔</div>
       <div class="menu-label">Notificações push</div>
+      <div id="notif-status" style="font-size:11px;color:var(--muted2);margin-right:8px;">A verificar...</div>
       <div class="menu-arrow">›</div>
     </div>
-    <div class="menu-item" onclick="showToast('📍 Localização sempre ativa!')">
+    <div class="menu-item" onclick="pedirLocalizacao()">
       <div class="menu-icon">📍</div>
       <div class="menu-label">Permissão de localização</div>
+      <div id="loc-status" style="font-size:11px;color:var(--muted2);margin-right:8px;">A verificar...</div>
       <div class="menu-arrow">›</div>
     </div>
-    <div class="menu-item" onclick="showToast('🔒 Dados protegidos pela LGPD!')">
+    <div class="menu-item" onclick="abrirPrivacidade()">
       <div class="menu-icon">🔒</div>
       <div class="menu-label">Privacidade e dados</div>
       <div class="menu-arrow">›</div>
     </div>
-    <div class="menu-item" onclick="showToast('📱 Versão 2.0.1')">
+    <div class="menu-item" onclick="abrirSobre()">
       <div class="menu-icon">ℹ️</div>
       <div class="menu-label">Sobre o EventosPt</div>
       <div class="menu-arrow">›</div>
@@ -2662,7 +2672,16 @@
 <!-- AI MODAL -->
 <div class="modal-overlay" id="ai-modal" onclick="closeIfOverlay(event)">
   <div class="modal-sheet">
-    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;margin-bottom:16px;">
+      <div onclick="closeAIModal()" style="
+        width:36px;height:36px;border-radius:50%;
+        background:var(--surface2);border:1px solid var(--border);
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;font-size:18px;flex-shrink:0;
+        transition:background .2s;
+      " onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">←</div>
+      <div style="flex:1;text-align:center;font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-right:36px;">Adicionar Evento</div>
+    </div>
 
     <!-- STEP 1: CONFIG -->
     <div id="ai-menu">
@@ -2950,6 +2969,9 @@
         <div class="form-group" style="margin-bottom:8px;">
           <input class="form-input" id="admin-ev-local" placeholder="Local / Bar" style="font-size:13px;">
         </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <input class="form-input" id="admin-ev-endereco" placeholder="Endereço completo (ex: Rua de Santa Catarina, 123, Porto)" style="font-size:13px;">
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
           <input class="form-input" id="admin-ev-genero" placeholder="Género" style="font-size:13px;">
           <input class="form-input" id="admin-ev-preco" placeholder="Preço" style="font-size:13px;">
@@ -3225,28 +3247,24 @@ EVENTS.forEach(ev => { ev.date = formatEventDate(ev.dateObj); });
 
 let currentGenre = 'todos';
 let favorites = JSON.parse(localStorage.getItem('ep_favs') || '[]');
-let currentUser = JSON.parse(localStorage.getItem('ep_user') || 'null');
+let currentUser = null;
 
 // ===================== INIT =====================
-function leaveSplash() {
-  if (currentUser) {
-    showScreen('app');
-    initApp();
-  } else {
-    showScreen('auth');
-  }
-}
-
 window.addEventListener('DOMContentLoaded', () => {
-  // Sai do splash ao fim da animação (2.2s) — com fallback de 4s
-  const splashTimer = setTimeout(leaveSplash, 2200);
-  // Clique no splash sai imediatamente
-  document.getElementById('splash')?.addEventListener('click', () => {
-    clearTimeout(splashTimer);
-    leaveSplash();
-  });
   getLocation();
   startLiveClock();
+  // Supabase onAuthStateChange (supabase-integration.js) trata a navegação
+  // Fallback: se após 4s ainda estiver no splash, vai para auth
+  setTimeout(() => {
+    if (document.getElementById('splash')?.classList.contains('active')) {
+      showScreen('auth');
+    }
+  }, 4000);
+  document.getElementById('splash')?.addEventListener('click', () => {
+    if (document.getElementById('splash')?.classList.contains('active')) {
+      showScreen('auth');
+    }
+  });
 });
 
 function startLiveClock() {
@@ -3324,6 +3342,7 @@ function showScreen(id) {
   // Ações por ecrã
   if (id === 'app')             { initApp(); }
   if (id === 'favorites-screen'){ renderFavorites(); }
+  if (id === 'profile-screen') { setTimeout(verificarPermissoes, 100); }
   window.scrollTo(0, 0);
 }
 
@@ -3392,38 +3411,9 @@ function aceitarTermos() {
   showToast('✅ Termos aceites!');
 }
 
-function doSignup() {
-  const name  = document.getElementById('signup-name').value.trim();
-  const email = document.getElementById('signup-email').value.trim();
-  const pass  = document.getElementById('signup-pass').value;
+// doSignup — gerido pelo supabase-integration.js
 
-  if (!name)               { shakeInput('signup-name');  showToast('⚠️ Insere o teu nome'); return; }
-  if (!email)              { shakeInput('signup-email'); showToast('⚠️ Insere o teu email'); return; }
-  if (!email.includes('@')){ shakeInput('signup-email'); showToast('⚠️ Email inválido'); return; }
-  if (!pass)               { shakeInput('signup-pass');  showToast('⚠️ Cria uma senha'); return; }
-  if (pass.length < 6)     { shakeInput('signup-pass');  showToast('⚠️ Senha mínimo 6 caracteres'); return; }
-  if (!termosAceitos) {
-    // Animar o checkbox para chamar atenção
-    const wrap = document.getElementById('termos-wrap');
-    wrap.style.borderColor = 'var(--accent)';
-    wrap.style.animation = 'shakeField .4s ease';
-    setTimeout(() => { wrap.style.animation = ''; }, 500);
-    showToast('⚠️ Aceita os Termos para continuar');
-    return;
-  }
-
-  const user = { name, email, termosAceitosEm: new Date().toISOString() };
-  localStorage.setItem('ep_user', JSON.stringify(user));
-  currentUser = user;
-  showToast('🎉 Conta criada com sucesso!');
-  setTimeout(() => { showScreen('app'); initApp(); }, 600);
-}
-
-function googleLogin() {
-  // Google OAuth real é tratado pelo supabase-integration.js
-  // Nesta versão local mostra aviso para usar email/senha
-  showToast('⚠️ Liga o Supabase para usar Google Login');
-}
+// googleLogin — gerido pelo supabase-integration.js
 
 function shakeInput(id) {
   const el = document.getElementById(id);
@@ -3435,12 +3425,7 @@ function shakeInput(id) {
   setTimeout(() => { el.style.borderColor = ''; el.style.animation = ''; }, 1500);
 }
 
-function logout() {
-  localStorage.removeItem('ep_user');
-  currentUser = null;
-  showToast('👋 Até logo!');
-  setTimeout(() => showScreen('auth'), 600);
-}
+// logout — gerido pelo supabase-integration.js
 
 // ===================== LOCATION =====================
 // ===================== GEOLOCALIZAÇÃO =====================
@@ -5313,14 +5298,22 @@ async function loadAdminStats() {
 
 // ── Eventos pendentes ─────────────────────────────────
 async function loadPendingEvents() {
-  if (!window._supabase) return;
   const list = document.getElementById('admin-pending-list');
+  const db = window._supabase;
+  if (!db) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">⚠️ A ligar ao Supabase...</div>';
+    setTimeout(loadPendingEvents, 1500);
+    return;
+  }
+  list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">🔄 A carregar...</div>';
   try {
-    const { data } = await window._supabase
+    const { data, error } = await db
       .from('events')
       .select('*')
       .eq('status', 'pending')
       .order('criado_em', { ascending: false });
+
+    if (error) throw error;
 
     if (!data?.length) {
       list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">✅ Nenhum evento pendente</div>';
@@ -5331,8 +5324,8 @@ async function loadPendingEvents() {
       <div class="admin-event-card">
         <div class="admin-event-name">${ev.nome}</div>
         <div class="admin-event-meta">
-          🎵 ${ev.genero} · 📅 ${new Date(ev.data_hora).toLocaleString('pt-PT')}
-          <br>📍 ${ev.local} · 💰 ${ev.preco || 'Grátis'}
+          🎵 ${ev.genero || ''} · 📅 ${new Date(ev.data_hora).toLocaleString('pt-PT')}
+          <br>📍 ${ev.local || ''}${ev.endereco ? ' · ' + ev.endereco : ''} · 💰 ${ev.preco || 'Grátis'}
           ${ev.url_ingresso ? `<br>🔗 <a href="${ev.url_ingresso}" target="_blank" style="color:var(--accent3)">Ver link</a>` : ''}
         </div>
         <div class="admin-actions">
@@ -5341,7 +5334,9 @@ async function loadPendingEvents() {
         </div>
       </div>
     `).join('');
-  } catch(e) { list.innerHTML = '<div style="color:var(--accent);font-size:13px;padding:10px;">Erro: ' + e.message + '</div>'; }
+  } catch(e) {
+    list.innerHTML = '<div style="color:var(--accent);font-size:13px;padding:10px;">Erro: ' + e.message + '</div>';
+  }
 }
 
 async function moderateEvent(id, status) {
@@ -5354,33 +5349,34 @@ async function moderateEvent(id, status) {
   } catch(e) { showToast('Erro: ' + e.message); }
 }
 
-// ── Adicionar evento como admin (aprovado direto) ─────
 async function adminAddEvent() {
-  if (!window._supabase || !isAdmin) return;
-  const nome   = document.getElementById('admin-ev-nome')?.value?.trim();
-  const data   = document.getElementById('admin-ev-data')?.value;
-  const hora   = document.getElementById('admin-ev-hora')?.value || '22:00';
-  const local  = document.getElementById('admin-ev-local')?.value?.trim();
-  const genero = document.getElementById('admin-ev-genero')?.value?.trim();
-  const preco  = document.getElementById('admin-ev-preco')?.value?.trim();
-  const url    = document.getElementById('admin-ev-url')?.value?.trim();
+  const db = window._supabase;
+  if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
+  const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
+  const data     = document.getElementById('admin-ev-data')?.value;
+  const hora     = document.getElementById('admin-ev-hora')?.value || '22:00';
+  const local    = document.getElementById('admin-ev-local')?.value?.trim();
+  const endereco = document.getElementById('admin-ev-endereco')?.value?.trim();
+  const genero   = document.getElementById('admin-ev-genero')?.value?.trim();
+  const preco    = document.getElementById('admin-ev-preco')?.value?.trim();
+  const url      = document.getElementById('admin-ev-url')?.value?.trim();
 
   if (!nome || !data || !local) { showToast('⚠️ Preenche nome, data e local'); return; }
 
   try {
     const dataHora = new Date(`${data}T${hora}`).toISOString();
-    await window._supabase.from('events').insert({
+    const { error } = await db.from('events').insert({
       nome, genero: genero || 'Evento', data_hora: dataHora,
-      local, preco: preco || 'Grátis', url_ingresso: url || null,
+      local, endereco: endereco || null,
+      preco: preco || 'Grátis', url_ingresso: url || null,
       status: 'approved', emoji: '🎉',
       cor1: '#0e1118', cor2: '#312e81',
     });
+    if (error) throw error;
     showToast('✅ Evento publicado com sucesso!');
-    // Limpa o formulário
-    ['admin-ev-nome','admin-ev-local','admin-ev-genero','admin-ev-preco','admin-ev-url']
+    ['admin-ev-nome','admin-ev-local','admin-ev-endereco','admin-ev-genero','admin-ev-preco','admin-ev-url']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     loadAdminStats();
-    // Recarrega eventos no app
     if (typeof loadDBEvents === 'function') loadDBEvents();
   } catch(e) { showToast('Erro: ' + e.message); }
 }
@@ -5428,6 +5424,81 @@ async function loadAdminNotifications() {
   } catch(e) {}
 }
 
+
+// ===================== CONFIGURAÇÕES =====================
+
+function verificarPermissoes() {
+  const notifEl = document.getElementById('notif-status');
+  if (notifEl) {
+    if (!('Notification' in window)) {
+      notifEl.textContent = 'Não suportado';
+    } else if (Notification.permission === 'granted') {
+      notifEl.textContent = '✅ Ativo'; notifEl.style.color = '#4ade80';
+    } else if (Notification.permission === 'denied') {
+      notifEl.textContent = '❌ Bloqueado'; notifEl.style.color = 'var(--accent)';
+    } else {
+      notifEl.textContent = 'Toque para ativar'; notifEl.style.color = 'var(--muted2)';
+    }
+  }
+  const locEl = document.getElementById('loc-status');
+  if (locEl && navigator.permissions) {
+    navigator.permissions.query({ name: 'geolocation' }).then(result => {
+      if (result.state === 'granted') { locEl.textContent = '✅ Ativa'; locEl.style.color = '#4ade80'; }
+      else if (result.state === 'denied') { locEl.textContent = '❌ Bloqueada'; locEl.style.color = 'var(--accent)'; }
+      else { locEl.textContent = 'Toque para ativar'; locEl.style.color = 'var(--muted2)'; }
+    });
+  }
+}
+
+async function toggleNotificacoes() {
+  if (!('Notification' in window)) { showToast('❌ Browser não suporta notificações'); return; }
+  if (Notification.permission === 'granted') { showToast('✅ Notificações já estão ativas'); return; }
+  if (Notification.permission === 'denied') { showToast('❌ Bloqueadas. Ativa nas definições do browser.'); return; }
+  const permission = await Notification.requestPermission();
+  if (permission === 'granted') {
+    new Notification('EventosPt 🎉', { body: 'Notificações ativadas! Receberás novidades sobre eventos.', icon: '/icons/icon-192.png' });
+    showToast('✅ Notificações ativadas!');
+  } else {
+    showToast('⚠️ Permissão negada');
+  }
+  verificarPermissoes();
+}
+
+function pedirLocalizacao() {
+  if (!navigator.geolocation) { showToast('❌ GPS não disponível'); return; }
+  showToast('📍 A pedir localização...');
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      showToast('✅ Localização ativada!');
+      verificarPermissoes();
+      userLocation.lat = pos.coords.latitude;
+      userLocation.lng = pos.coords.longitude;
+      if (typeof recalcDistances === 'function') recalcDistances(pos.coords.latitude, pos.coords.longitude);
+    },
+    err => {
+      if (err.code === 1) showToast('❌ Permissão negada. Ativa nas definições do browser.');
+      else showToast('❌ Erro ao obter localização');
+    }
+  );
+}
+
+function abrirPrivacidade() { openTermos(); }
+
+function abrirSobre() {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:90%;max-width:360px;border:1px solid var(--border);text-align:center;">
+    <div style="font-size:48px;margin-bottom:12px;">🎉</div>
+    <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:4px;">Eventos<span style="color:var(--accent)">Pt</span></div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:16px;">Versão 2.0 · 2025</div>
+    <div style="font-size:13px;color:var(--muted2);line-height:1.6;margin-bottom:20px;">Plataforma de descoberta de eventos culturais, musicais e gastronómicos. Desenvolvida para ligar pessoas a experiências únicas.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">© 2025 EventosPt</div>
+    <button onclick="this.closest('div[style*=fixed]').remove()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),#ff6b9d);border:none;border-radius:var(--radius-sm);color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">Fechar</button>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -5436,5 +5507,6 @@ function showToast(msg) {
 }
 
 // =====================</script>
+<script src="supabase-integration.js"></script>
 </body>
 </html>
