@@ -3261,22 +3261,31 @@ function switchTab(tab) {
   document.getElementById('signup-form').style.display = tab === 'signup' ? 'block' : 'none';
 }
 
-function doLogin() {
+async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-pass').value;
 
-  if (!email)              { shakeInput('login-email'); showToast('⚠️ Insere o teu email'); return; }
-  if (!email.includes('@')){ shakeInput('login-email'); showToast('⚠️ Email inválido'); return; }
-  if (!pass)               { shakeInput('login-pass');  showToast('⚠️ Insere a tua senha'); return; }
-  if (pass.length < 6)     { shakeInput('login-pass');  showToast('⚠️ Senha demasiado curta'); return; }
+  if (!email)               { shakeInput('login-email'); showToast('⚠️ Insere o teu email'); return; }
+  if (!email.includes('@')) { shakeInput('login-email'); showToast('⚠️ Email inválido'); return; }
+  if (!pass)                { shakeInput('login-pass');  showToast('⚠️ Insere a tua senha'); return; }
+  if (pass.length < 6)      { shakeInput('login-pass');  showToast('⚠️ Senha demasiado curta'); return; }
 
-  // Aqui entraria a validação real com Supabase (supabase-integration.js trata disso)
-  // Esta versão local guarda a sessão apenas se os campos estiverem preenchidos
-  const user = { name: email.split('@')[0], email };
-  localStorage.setItem('ep_user', JSON.stringify(user));
-  currentUser = user;
-  showToast('✅ Bem-vindo de volta!');
-  setTimeout(() => { showScreen('app'); initApp(); }, 600);
+  const btn = document.querySelector('#login-form .btn-primary');
+  if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
+
+  try {
+    const client = window._supabase || db;
+    if (!client) throw new Error('Supabase não inicializado');
+    const { error } = await client.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+    showToast('✅ Bem-vindo de volta!');
+  } catch(e) {
+    const msg = e.message || '';
+    if (msg.includes('Invalid login credentials')) showToast('❌ Email ou senha incorretos');
+    else if (msg.includes('Email not confirmed')) showToast('❌ Confirma o teu email primeiro');
+    else showToast('❌ ' + msg);
+    if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
+  }
 }
 
 // ===================== TERMOS =====================
