@@ -3263,15 +3263,7 @@ function switchTab(tab) {
 
 
 function getDB() {
-  if (window.__sb_client) return window.__sb_client;
-  try {
-    window.__sb_client = window.supabase.createClient(
-      'https://jqchhyhwoqnhumopcnip.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4',
-      { auth: { persistSession: true, autoRefreshToken: true } }
-    );
-    return window.__sb_client;
-  } catch(e) { return null; }
+  return window._supabase || null;
 }
 
 async function doLogin() {
@@ -5444,13 +5436,13 @@ function showToast(msg) {
 (function() {
   function initSB() {
     if (!window.supabase) { setTimeout(initSB, 100); return; }
-    if (window.__sbDone) return;
+    if (window.__sbDone || window._supabase) return;
     window.__sbDone = true;
 
     var client = window.supabase.createClient(
       'https://jqchhyhwoqnhumopcnip.supabase.co',
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4',
-      { auth: { persistSession: true, autoRefreshToken: true } }
+      { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'eventospt-auth' } }
     );
     window._supabase = client;
     window.__sb_client = client;
