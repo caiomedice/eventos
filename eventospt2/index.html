@@ -5229,15 +5229,15 @@ async function loadAdminStats() {
 // ── Eventos pendentes ─────────────────────────────────
 async function loadPendingEvents() {
   const list = document.getElementById('admin-pending-list');
-  const _db = getDB();
-  if (!db) {
+  const client = window._supabase || window.__sb_client;
+  if (!client) {
     list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">⚠️ A ligar ao Supabase...</div>';
     setTimeout(loadPendingEvents, 2000);
     return;
   }
   list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">🔄 A carregar...</div>';
   try {
-    const { data, error } = await db
+    const { data, error } = await client
       .from('events')
       .select('*')
       .eq('status', 'pending')
@@ -5295,7 +5295,7 @@ async function adminAddEvent() {
 
   try {
     const dataHora = new Date(`${data}T${hora}`).toISOString();
-    const { error } = await db.from('events').insert({
+    const { error } = await client.from('events').insert({
       nome, genero: genero || 'Evento', data_hora: dataHora,
       local, endereco: endereco || null,
       preco: preco || 'Grátis', url_ingresso: url || null,
