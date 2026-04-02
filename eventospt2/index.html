@@ -3161,13 +3161,13 @@ var currentUser = null;
 window.addEventListener('DOMContentLoaded', () => {
   getLocation();
   startLiveClock();
-  // Supabase onAuthStateChange (supabase-integration.js) trata a navegação
-  // Fallback: se após 4s ainda estiver no splash, vai para auth
+  // Fallback de segurança: se o Supabase demorar mais de 3s a responder,
+  // o splash sai e vai para auth. O onAuthStateChange trata o resto.
   setTimeout(() => {
     if (document.getElementById('splash')?.classList.contains('active')) {
       showScreen('auth');
     }
-  }, 4000);
+  }, 3000);
   document.getElementById('splash')?.addEventListener('click', () => {
     if (document.getElementById('splash')?.classList.contains('active')) {
       showScreen('auth');
@@ -3267,29 +3267,24 @@ function getDB() {
 }
 
 async function doLogin() {
+  // Delega para window.doLogin definido no bloco Supabase
+  if (window.doLogin && window.doLogin !== doLogin) { window.doLogin(); return; }
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-pass').value;
-
-  if (!email)               { shakeInput('login-email'); showToast('⚠️ Insere o teu email'); return; }
+  if (!email) { shakeInput('login-email'); showToast('⚠️ Insere o teu email'); return; }
   if (!email.includes('@')) { shakeInput('login-email'); showToast('⚠️ Email inválido'); return; }
-  if (!pass)                { shakeInput('login-pass');  showToast('⚠️ Insere a tua senha'); return; }
-  if (pass.length < 6)      { shakeInput('login-pass');  showToast('⚠️ Senha demasiado curta'); return; }
-
+  if (!pass)  { shakeInput('login-pass');  showToast('⚠️ Insere a tua senha'); return; }
+  const sb = getDB();
+  if (!sb) { showToast('⚠️ A ligar... tenta já a seguir'); return; }
   const btn = document.querySelector('#login-form .btn-primary');
   if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
-
-  try {
-    const client = typeof db !== 'undefined' && db ? db : getDB();
-    if (!client) throw new Error('Supabase não inicializado');
-    const { error } = await client.auth.signInWithPassword({ email, password: pass });
-    if (error) throw error;
-    showToast('✅ Bem-vindo de volta!');
-  } catch(e) {
-    const msg = e.message || '';
+  const r = await sb.auth.signInWithPassword({ email, password: pass });
+  if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
+  if (r.error) {
+    const msg = r.error.message || '';
     if (msg.includes('Invalid login credentials')) showToast('❌ Email ou senha incorretos');
     else if (msg.includes('Email not confirmed')) showToast('❌ Confirma o teu email primeiro');
     else showToast('❌ ' + msg);
-    if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
   }
 }
 
@@ -5219,18 +5214,12 @@ async function loadAdminStats() {
 }
 
 // ── Eventos pendentes ─────────────────────────────────
-async function loadPendingEvents(retries) {
-  var _retries = retries === undefined ? 0 : retries;
+async function loadPendingEvents() {
   const list = document.getElementById('admin-pending-list');
-  if (!list) return;
   const client = window._supabase || window.__sb_client;
   if (!client) {
-    if (_retries >= 5) {
-      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--accent);font-size:13px;">⚠️ Sem ligação ao Supabase. <br><button onclick="loadPendingEvents()" style="margin-top:8px;padding:6px 14px;background:var(--surface3);border:1px solid var(--border);border-radius:8px;color:var(--muted2);cursor:pointer;font-size:12px;">🔄 Tentar novamente</button></div>';
-      return;
-    }
-    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">⏳ A ligar ao Supabase...</div>';
-    setTimeout(function(){ loadPendingEvents(_retries + 1); }, 2000);
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">⚠️ A ligar ao Supabase...</div>';
+    setTimeout(loadPendingEvents, 2000);
     return;
   }
   list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted2);font-size:13px;">🔄 A carregar...</div>';
@@ -5439,91 +5428,131 @@ function showToast(msg) {
 
 <script>
 // ── SUPABASE INIT ──────────────────────────────────────
+// Regra única: este bloco é a ÚNICA fonte de verdade para auth.
+// Não há outro ficheiro, não há duplicados.
 (function() {
   function initSB() {
     if (!window.supabase) { setTimeout(initSB, 100); return; }
-    if (window.__sbDone || window._supabase) return;
-    window.__sbDone = true;
+    if (window._supabase) return; // já inicializado, não repetir
 
     var client = window.supabase.createClient(
       'https://jqchhyhwoqnhumopcnip.supabase.co',
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4',
-      { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'eventospt-auth' } }
+      { auth: { persistSession: true, autoRefreshToken: true } }
     );
     window._supabase = client;
-    window.__sb_client = client;
     console.log('✅ Supabase ligado');
 
-    client.auth.onAuthStateChange(async function(event, session) {
+    // ── Carregar dados do utilizador em background (nunca bloqueia) ──
+    function carregarDadosUtilizador(user) {
+      // Sessão
+      try {
+        var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS'
+                 : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
+        client.from('user_sessions').insert({ user_id: user.id, dispositivo: disp });
+      } catch(e) {}
+
+      // Perfil
+      client.from('profiles').select('*').eq('id', user.id).single()
+        .then(function(res) {
+          if (!res.data) return;
+          var n = document.getElementById('profile-name');
+          var e = document.getElementById('profile-email');
+          if (n) n.textContent = res.data.nome || user.email.split('@')[0];
+          if (e) e.textContent = user.email || '';
+        }).catch(function(){});
+
+      // Favoritos
+      client.from('favorites').select('event_id').eq('user_id', user.id)
+        .then(function(res) {
+          if (res.data) favoritesIds = res.data.map(function(f){ return f.event_id; });
+        }).catch(function(){});
+
+      // Eventos da BD
+      window.loadDBEvents();
+
+      // Admin
+      if (typeof checkAdmin === 'function') checkAdmin(user);
+    }
+
+    // ── Único listener de auth — lógica clara e sem ambiguidade ──
+    client.auth.onAuthStateChange(function(event, session) {
       currentUser = session ? session.user : null;
-      if (currentUser) {
-        try {
-          var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS' : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
-          client.from('user_sessions').insert({ user_id: currentUser.id, dispositivo: disp });
-        } catch(e) {}
-        try {
-          var fav = await client.from('favorites').select('event_id').eq('user_id', currentUser.id);
-          favoritesIds = (fav.data || []).map(function(f){ return f.event_id; });
-        } catch(e) {}
-        try {
-          var prof = await client.from('profiles').select('*').eq('id', currentUser.id).single();
-          if (prof.data) {
-            var n = document.getElementById('profile-name');
-            var e = document.getElementById('profile-email');
-            if (n) n.textContent = prof.data.nome || currentUser.email.split('@')[0];
-            if (e) e.textContent = currentUser.email || '';
-          }
-        } catch(e) {}
-        if (typeof checkAdmin === 'function') checkAdmin(currentUser);
-        if (typeof loadDBEvents === 'function') await loadDBEvents();
-        if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
-      } else {
-        if (typeof showScreen === 'function') showScreen('auth');
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // Login activo ou token renovado → app
+        showScreen('app');
+        if (typeof initApp === 'function') initApp();
+        carregarDadosUtilizador(currentUser);
+        return;
+      }
+
+      if (event === 'SIGNED_OUT') {
+        // Logout → auth
+        currentUser = null;
+        showScreen('auth');
+        return;
+      }
+
+      if (event === 'INITIAL_SESSION') {
+        // App abriu: havia sessão guardada → app; não havia → auth
+        if (currentUser) {
+          showScreen('app');
+          if (typeof initApp === 'function') initApp();
+          carregarDadosUtilizador(currentUser);
+        } else {
+          showScreen('auth');
+        }
+        return;
       }
     });
 
+    // ── Acções expostas globalmente ──
+
     window.doLogin = async function() {
-      var email = document.getElementById('login-email') ? document.getElementById('login-email').value.trim() : '';
-      var pass  = document.getElementById('login-pass')  ? document.getElementById('login-pass').value : '';
+      var email = (document.getElementById('login-email') || {}).value || '';
+      var pass  = (document.getElementById('login-pass')  || {}).value || '';
+      email = email.trim();
       if (!email || !pass) { showToast('⚠️ Preenche email e senha'); return; }
       var btn = document.querySelector('#login-form .btn-primary');
       if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
-      try {
-        var r = await client.auth.signInWithPassword({ email: email, password: pass });
-        if (r.error) throw r.error;
-        showToast('✅ Bem-vindo!');
-      } catch(err) {
-        var msg = err.message || '';
+      var r = await client.auth.signInWithPassword({ email: email, password: pass });
+      if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
+      if (r.error) {
+        var msg = r.error.message || '';
         if (msg.includes('Invalid login')) showToast('❌ Email ou senha incorretos');
-        else if (msg.includes('not confirmed')) showToast('❌ Confirma o teu email');
+        else if (msg.includes('not confirmed')) showToast('❌ Confirma o teu email primeiro');
         else showToast('❌ ' + msg);
-        if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
       }
+      // em caso de sucesso o onAuthStateChange trata a navegação
     };
 
     window.doSignup = async function() {
-      var nome  = document.getElementById('signup-name')  ? document.getElementById('signup-name').value.trim() : '';
-      var email = document.getElementById('signup-email') ? document.getElementById('signup-email').value.trim() : '';
-      var pass  = document.getElementById('signup-pass')  ? document.getElementById('signup-pass').value : '';
+      var nome  = (document.getElementById('signup-name')  || {}).value || '';
+      var email = (document.getElementById('signup-email') || {}).value || '';
+      var pass  = (document.getElementById('signup-pass')  || {}).value || '';
+      nome = nome.trim(); email = email.trim();
       if (!nome || !email || !pass) { showToast('⚠️ Preenche todos os campos'); return; }
       if (pass.length < 6) { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
       var btn = document.querySelector('#signup-form .btn-primary');
       if (btn) { btn.textContent = 'A criar...'; btn.disabled = true; }
-      try {
-        var r = await client.auth.signUp({ email: email, password: pass, options: { data: { full_name: nome } } });
-        if (r.error) throw r.error;
-        showToast('🎉 Conta criada! Verifica o teu email.');
-      } catch(err) {
-        showToast('❌ ' + (err.message || 'Erro'));
-        if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
-      }
+      var r = await client.auth.signUp({ email: email, password: pass, options: { data: { full_name: nome } } });
+      if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
+      if (r.error) showToast('❌ ' + r.error.message);
+      else showToast('🎉 Conta criada! Verifica o teu email.');
     };
 
     window.logout = async function() {
-      await client.auth.signOut();
-      currentUser = null;
-      showToast('👋 Até logo!');
-      setTimeout(function(){ showScreen('auth'); }, 600);
+      await client.auth.signOut().catch(function(){});
+      // o onAuthStateChange com SIGNED_OUT trata o resto
+    };
+
+    window.googleLogin = async function() {
+      var r = await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin }
+      });
+      if (r.error) showToast('❌ Erro Google: ' + r.error.message);
     };
 
     window.loadDBEvents = async function() {
@@ -5551,12 +5580,12 @@ function showToast(msg) {
           if (!EVENTS.find(function(e){ return e.id === converted.id; })) EVENTS.push(converted);
         });
         if (typeof applyFilters==='function') applyFilters();
-      } catch(err) { console.warn('Eventos:', err.message); }
+      } catch(err) { console.warn('loadDBEvents:', err.message); }
     };
 
-    window._supabase = client;
   }
   initSB();
-})();</script>
+})();
+</script>
 </body>
 </html>
