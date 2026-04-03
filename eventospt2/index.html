@@ -3237,7 +3237,7 @@ function updateFeaturedCard() {
   if (dateEl)  dateEl.textContent  = formatEventDate(featured.dateObj);
   if (distEl)  distEl.textContent  = featured.dist + ' km';
   if (goingEl) goingEl.textContent = featured.going + ' vão';
-  if (card)    card.setAttribute('onclick', `openDetail('${featured.id}')`);
+  if (card)    card.setAttribute('onclick', `openDetail(${featured.id})`);
 }
 
 // ===================== SCREENS =====================
@@ -3561,7 +3561,7 @@ function renderEvents(events) {
           : '';
 
       html += `
-        <div class="event-card ${ev.recommended ? 'recommended' : ''}" onclick="openDetail('${ev.id}')">
+        <div class="event-card ${ev.recommended ? 'recommended' : ''}" onclick="openDetail(${ev.id})">
           <div class="event-thumb" style="--c1:${ev.c1};--c2:${ev.c2}"><span>${ev.emoji}</span></div>
           <div class="event-body">
             <div class="event-tags">
@@ -3577,7 +3577,7 @@ function renderEvents(events) {
               <span style="font-size:12px;font-weight:600;${/grátis|gratis|free/i.test(ev.price) ? 'color:#4ade80' : 'color:var(--muted2)'}">
                 ${/grátis|gratis|free/i.test(ev.price) ? '🟢 Grátis' : ev.price}
               </span>
-              <span class="event-fav" onclick="event.stopPropagation(); toggleFavById('${ev.id}', this)">${favorites.includes(ev.id) ? '❤️' : '🤍'}</span>
+              <span class="event-fav" onclick="event.stopPropagation(); toggleFavById(${ev.id}, this)">${favorites.includes(ev.id) ? '❤️' : '🤍'}</span>
             </div>
           </div>
         </div>`;
@@ -3709,7 +3709,7 @@ function switchDetailTab(tab) {
 }
 
 function openDetail(id) {
-  const ev = EVENTS.find(e => String(e.id) === String(id)) || EVENTS[0];
+  const ev = EVENTS.find(e => e.id === id) || EVENTS[0];
   currentEventId = ev.id;
   document.getElementById('detail-emoji').textContent  = ev.emoji;
   document.getElementById('detail-genre').textContent  = ev.genre;
@@ -3826,7 +3826,7 @@ function renderFavorites() {
     return;
   }
   list.innerHTML = favEvents.map(ev => `
-    <div class="event-card" onclick="openDetail('${ev.id}')" style="margin-bottom:10px">
+    <div class="event-card" onclick="openDetail(${ev.id})" style="margin-bottom:10px">
       <div class="event-thumb" style="--c1:${ev.c1};--c2:${ev.c2}"><span>${ev.emoji}</span></div>
       <div class="event-body">
         <div class="event-tags"><span class="event-tag tag-genre">${ev.genre}</span></div>
@@ -5518,6 +5518,18 @@ function showToast(msg) {
       currentUser = null;
       showToast('👋 Até logo!');
       setTimeout(function(){ showScreen('auth'); }, 600);
+    };
+
+    window.googleLogin = async function() {
+      try {
+        var r = await client.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: window.location.origin }
+        });
+        if (r.error) showToast('❌ Erro Google: ' + r.error.message);
+      } catch(e) {
+        showToast('❌ Erro Google: ' + e.message);
+      }
     };
 
     window.loadDBEvents = async function() {
