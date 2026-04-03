@@ -4646,48 +4646,52 @@ const EVENT_COORDS = {
 var currentEventId = 0;
 
 function getCoords(id) {
-  return EVENT_COORDS[id] || { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
+  if (EVENT_COORDS[id]) return EVENT_COORDS[id];
+  var ev = EVENTS.find(function(e){ return e.id === id; });
+  var addr = ev ? (ev.venue || ev.name) + ', Portugal' : 'Porto, Portugal';
+  return { lat: null, lng: null, address: addr };
 }
 
 function openWaze(e) {
   e.preventDefault();
-  const { lat, lng } = getCoords(currentEventId);
-  const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&zoom=17`;
+  var c = getCoords(currentEventId);
+  var url = (c.lat && c.lng)
+    ? 'https://waze.com/ul?ll=' + c.lat + ',' + c.lng + '&navigate=yes&zoom=17'
+    : 'https://waze.com/ul?q=' + encodeURIComponent(c.address) + '&navigate=yes';
   showToast('🚗 A abrir o Waze...');
-  setTimeout(() => window.open(url, '_blank'), 400);
+  setTimeout(function(){ window.open(url, '_blank'); }, 300);
 }
 
 function openGoogleMaps(e) {
   e.preventDefault();
-  const { lat, lng, address } = getCoords(currentEventId);
-  const dest = encodeURIComponent(address);
-  // Try native app first, fallback to web
-  const nativeUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
-  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  var c = getCoords(currentEventId);
+  var dest = (c.lat && c.lng) ? c.lat + ',' + c.lng : encodeURIComponent(c.address);
   showToast('🗺 A abrir o Google Maps...');
-  setTimeout(() => {
-    // On mobile try deep link, else web
-    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-    window.open(isMobile ? `https://maps.google.com/?daddr=${lat},${lng}` : webUrl, '_blank');
-  }, 400);
+  setTimeout(function(){ window.open('https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving', '_blank'); }, 300);
 }
 
 function openAppleMaps(e) {
   e.preventDefault();
-  const { lat, lng, address } = getCoords(currentEventId);
-  const dest = encodeURIComponent(address);
-  const url = `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
+  var c = getCoords(currentEventId);
+  var url = (c.lat && c.lng)
+    ? 'https://maps.apple.com/?daddr=' + c.lat + ',' + c.lng + '&dirflg=d'
+    : 'https://maps.apple.com/?q=' + encodeURIComponent(c.address) + '&dirflg=d';
   showToast('🍎 A abrir o Apple Maps...');
-  setTimeout(() => window.open(url, '_blank'), 400);
+  setTimeout(function(){ window.open(url, '_blank'); }, 300);
 }
 
 function copyAddress() {
-  const { address } = getCoords(currentEventId);
+  var c = getCoords(currentEventId);
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(address).then(() => showToast('📋 Endereço copiado!'));
-  } else {
-    showToast('📋 ' + address);
-  }
+    navigator.clipboard.writeText(c.address).then(function(){ showToast('📋 Endereço copiado!'); }).catch(function(){ _copyFb(c.address); });
+  } else { _copyFb(c.address); }
+}
+function _copyFb(t) {
+  var ta = document.createElement('textarea');
+  ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); showToast('📋 Endereço copiado!'); } catch(x){ showToast('📋 ' + t); }
+  document.body.removeChild(ta);
 }
 
 function unlockMap() {
@@ -4710,10 +4714,10 @@ function shareEvent() {
 }
 
 function updateMapForEvent(id) {
-  const c = getCoords(id);
-  const delta = 0.025;
-  const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
+  var c = getCoords(id);
+  var src = (c.lat && c.lng)
+    ? 'https://www.openstreetmap.org/export/embed.html?bbox=' + (c.lng-0.025) + ',' + (c.lat-0.025) + ',' + (c.lng+0.025) + ',' + (c.lat+0.025) + '&layer=mapnik&marker=' + c.lat + ',' + c.lng
+    : 'https://www.openstreetmap.org/export/embed.html?query=' + encodeURIComponent(c.address) + '&layer=mapnik';
   document.getElementById('detail-map-iframe').src = src;
   document.getElementById('detail-map-iframe').style.pointerEvents = 'none';
   document.getElementById('map-overlay').classList.remove('hidden');
