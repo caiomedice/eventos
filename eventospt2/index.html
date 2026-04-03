@@ -2182,9 +2182,9 @@
     <div class="distance-wrap">
       <div class="distance-header">
         <div class="distance-label">📍 Raio de busca</div>
-        <div class="distance-value"><span id="dist-val">50</span> km</div>
+        <div class="distance-value"><span id="dist-val">5</span> km</div>
       </div>
-      <input type="range" min="1" max="50" value="50" oninput="updateDist(this.value)">
+      <input type="range" min="1" max="50" value="5" oninput="updateDist(this.value)">
     </div>
 
     <!-- FEATURED EVENT -->
@@ -3130,7 +3130,9 @@ function formatEventDate(dateObj) {
 }
 
 function isUpcoming(dateObj) {
-  return true; // mostra todos os eventos aprovados
+  // Keep events where start time is still in the future
+  // (or started within the last 30 min — grace period)
+  return dateObj.getTime() > Date.now() - 30 * 60 * 1000;
 }
 
 function timeUntil(dateObj) {
@@ -3235,7 +3237,7 @@ function updateFeaturedCard() {
   if (dateEl)  dateEl.textContent  = formatEventDate(featured.dateObj);
   if (distEl)  distEl.textContent  = featured.dist + ' km';
   if (goingEl) goingEl.textContent = featured.going + ' vão';
-  if (card)    card.setAttribute('onclick', `openDetail(${featured.id})`);
+  if (card)    card.setAttribute('onclick', `openDetail('${featured.id}')`);
 }
 
 // ===================== SCREENS =====================
@@ -3559,7 +3561,7 @@ function renderEvents(events) {
           : '';
 
       html += `
-        <div class="event-card ${ev.recommended ? 'recommended' : ''}" onclick="openDetail(${ev.id})">
+        <div class="event-card ${ev.recommended ? 'recommended' : ''}" onclick="openDetail('${ev.id}')">
           <div class="event-thumb" style="--c1:${ev.c1};--c2:${ev.c2}"><span>${ev.emoji}</span></div>
           <div class="event-body">
             <div class="event-tags">
@@ -3575,7 +3577,7 @@ function renderEvents(events) {
               <span style="font-size:12px;font-weight:600;${/grátis|gratis|free/i.test(ev.price) ? 'color:#4ade80' : 'color:var(--muted2)'}">
                 ${/grátis|gratis|free/i.test(ev.price) ? '🟢 Grátis' : ev.price}
               </span>
-              <span class="event-fav" onclick="event.stopPropagation(); toggleFavById(${ev.id}, this)">${favorites.includes(ev.id) ? '❤️' : '🤍'}</span>
+              <span class="event-fav" onclick="event.stopPropagation(); toggleFavById('${ev.id}', this)">${favorites.includes(ev.id) ? '❤️' : '🤍'}</span>
             </div>
           </div>
         </div>`;
@@ -3676,8 +3678,9 @@ function applyFilters(query = '') {
     const categoryMatch = currentGenre === 'todos' || ev.category === currentGenre;
     const subMatch      = currentGenre !== 'music' || currentSubgenre === 'todos'
                           || ev.genre?.toLowerCase().includes(currentSubgenre.toLowerCase());
+    const distMatch     = ev.dist <= dist;
     const queryMatch    = !query || ev.name.toLowerCase().includes(query.toLowerCase()) || ev.venue.toLowerCase().includes(query.toLowerCase());
-    return categoryMatch && subMatch && queryMatch;
+    return upcoming && categoryMatch && subMatch && distMatch && queryMatch;
   });
   filtered.sort((a, b) => a.dateObj - b.dateObj);
   renderEvents(filtered);
@@ -3706,7 +3709,7 @@ function switchDetailTab(tab) {
 }
 
 function openDetail(id) {
-  const ev = EVENTS.find(e => e.id === id) || EVENTS[0];
+  const ev = EVENTS.find(e => String(e.id) === String(id)) || EVENTS[0];
   currentEventId = ev.id;
   document.getElementById('detail-emoji').textContent  = ev.emoji;
   document.getElementById('detail-genre').textContent  = ev.genre;
@@ -3823,7 +3826,7 @@ function renderFavorites() {
     return;
   }
   list.innerHTML = favEvents.map(ev => `
-    <div class="event-card" onclick="openDetail(${ev.id})" style="margin-bottom:10px">
+    <div class="event-card" onclick="openDetail('${ev.id}')" style="margin-bottom:10px">
       <div class="event-thumb" style="--c1:${ev.c1};--c2:${ev.c2}"><span>${ev.emoji}</span></div>
       <div class="event-body">
         <div class="event-tags"><span class="event-tag tag-genre">${ev.genre}</span></div>
@@ -4117,43 +4120,23 @@ function submitManualEvent() {
     frequencia:  freq,
   };
 
-  // Envia para Supabase como PENDENTE — precisa de aprovação do admin
-  const _sbClient = window._supabase;
-  if (!_sbClient) {
-    showToast('⚠️ Sem ligação. Tenta novamente.');
-    return;
-  }
+  if (!EVENTS.find(e => e.id === newId)) EVENTS.push(newEvent);
 
-  // Bloqueia botão enquanto envia
-  const submitBtn = document.querySelector('[onclick="submitManualEvent()"]');
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'A enviar...'; }
+  const saved = JSON.parse(localStorage.getItem('ep_manual_events') || '[]');
+  saved.push({ ...newEvent, dateObj: newEvent.dateObj.toISOString() });
+  localStorage.setItem('ep_manual_events', JSON.stringify(saved));
 
-  _sbClient.from('events').insert({
-    nome, genero, categoria,
-    data_hora: dateObj.toISOString(),
-    local, endereco: endereco || null,
-    preco, url_ingresso: url || null,
-    emoji, cor1: pal.c1, cor2: pal.c2,
-    status: 'pending',
-    fonte: 'Utilizador',
-    submetido_por: currentUser?.id || null,
-  }).then(function(r) {
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '✅ Guardar e adicionar à lista'; }
-    if (r.error) {
-      showToast('❌ Erro: ' + r.error.message);
-      return;
-    }
-    // Limpa o formulário só após sucesso
-    ['manual-nome','manual-local','manual-endereco','manual-genero',
-     'manual-preco','manual-url','manual-frequencia','manual-data'].forEach(function(id) {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-    const dateField = document.getElementById('manual-data');
-    if (dateField) dateField.value = new Date().toISOString().split('T')[0];
-    closeAIModal();
-    showToast('📨 Evento enviado! O admin irá aprovar em breve.');
+  ['manual-nome','manual-local','manual-endereco','manual-genero',
+   'manual-preco','manual-url','manual-frequencia','manual-data'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
+  document.getElementById('manual-data').value = new Date().toISOString().split('T')[0];
+
+  closeAIModal();
+  applyFilters();
+  updateFeaturedCard();
+  showToast(`✅ "${nome}" adicionado à lista!`);
 }
 
 // Carrega eventos manuais guardados no localStorage
@@ -4646,52 +4629,48 @@ const EVENT_COORDS = {
 var currentEventId = 0;
 
 function getCoords(id) {
-  if (EVENT_COORDS[id]) return EVENT_COORDS[id];
-  var ev = EVENTS.find(function(e){ return e.id === id; });
-  var addr = ev ? (ev.venue || ev.name) + ', Portugal' : 'Porto, Portugal';
-  return { lat: null, lng: null, address: addr };
+  return EVENT_COORDS[id] || { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
 }
 
 function openWaze(e) {
   e.preventDefault();
-  var c = getCoords(currentEventId);
-  var url = (c.lat && c.lng)
-    ? 'https://waze.com/ul?ll=' + c.lat + ',' + c.lng + '&navigate=yes&zoom=17'
-    : 'https://waze.com/ul?q=' + encodeURIComponent(c.address) + '&navigate=yes';
+  const { lat, lng } = getCoords(currentEventId);
+  const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&zoom=17`;
   showToast('🚗 A abrir o Waze...');
-  setTimeout(function(){ window.open(url, '_blank'); }, 300);
+  setTimeout(() => window.open(url, '_blank'), 400);
 }
 
 function openGoogleMaps(e) {
   e.preventDefault();
-  var c = getCoords(currentEventId);
-  var dest = (c.lat && c.lng) ? c.lat + ',' + c.lng : encodeURIComponent(c.address);
+  const { lat, lng, address } = getCoords(currentEventId);
+  const dest = encodeURIComponent(address);
+  // Try native app first, fallback to web
+  const nativeUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
+  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
   showToast('🗺 A abrir o Google Maps...');
-  setTimeout(function(){ window.open('https://www.google.com/maps/dir/?api=1&destination=' + dest + '&travelmode=driving', '_blank'); }, 300);
+  setTimeout(() => {
+    // On mobile try deep link, else web
+    const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+    window.open(isMobile ? `https://maps.google.com/?daddr=${lat},${lng}` : webUrl, '_blank');
+  }, 400);
 }
 
 function openAppleMaps(e) {
   e.preventDefault();
-  var c = getCoords(currentEventId);
-  var url = (c.lat && c.lng)
-    ? 'https://maps.apple.com/?daddr=' + c.lat + ',' + c.lng + '&dirflg=d'
-    : 'https://maps.apple.com/?q=' + encodeURIComponent(c.address) + '&dirflg=d';
+  const { lat, lng, address } = getCoords(currentEventId);
+  const dest = encodeURIComponent(address);
+  const url = `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
   showToast('🍎 A abrir o Apple Maps...');
-  setTimeout(function(){ window.open(url, '_blank'); }, 300);
+  setTimeout(() => window.open(url, '_blank'), 400);
 }
 
 function copyAddress() {
-  var c = getCoords(currentEventId);
+  const { address } = getCoords(currentEventId);
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(c.address).then(function(){ showToast('📋 Endereço copiado!'); }).catch(function(){ _copyFb(c.address); });
-  } else { _copyFb(c.address); }
-}
-function _copyFb(t) {
-  var ta = document.createElement('textarea');
-  ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-  document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); showToast('📋 Endereço copiado!'); } catch(x){ showToast('📋 ' + t); }
-  document.body.removeChild(ta);
+    navigator.clipboard.writeText(address).then(() => showToast('📋 Endereço copiado!'));
+  } else {
+    showToast('📋 ' + address);
+  }
 }
 
 function unlockMap() {
@@ -4714,10 +4693,10 @@ function shareEvent() {
 }
 
 function updateMapForEvent(id) {
-  var c = getCoords(id);
-  var src = (c.lat && c.lng)
-    ? 'https://www.openstreetmap.org/export/embed.html?bbox=' + (c.lng-0.025) + ',' + (c.lat-0.025) + ',' + (c.lng+0.025) + ',' + (c.lat+0.025) + '&layer=mapnik&marker=' + c.lat + ',' + c.lng
-    : 'https://www.openstreetmap.org/export/embed.html?query=' + encodeURIComponent(c.address) + '&layer=mapnik';
+  const c = getCoords(id);
+  const delta = 0.025;
+  const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
   document.getElementById('detail-map-iframe').src = src;
   document.getElementById('detail-map-iframe').style.pointerEvents = 'none';
   document.getElementById('map-overlay').classList.remove('hidden');
@@ -5289,15 +5268,12 @@ async function moderateEvent(id, status) {
     showToast(status === 'approved' ? '✅ Evento aprovado e publicado!' : '❌ Evento rejeitado');
     loadPendingEvents();
     loadAdminStats();
-    loadAdminNotifications();
-    // Se aprovado, recarrega os eventos na app imediatamente
-    if (status === 'approved' && typeof loadDBEvents === 'function') loadDBEvents();
   } catch(e) { showToast('Erro: ' + e.message); }
 }
 
 async function adminAddEvent() {
   const _db = getDB();
-  if (!_db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
+  if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
   const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
   const data     = document.getElementById('admin-ev-data')?.value;
   const hora     = document.getElementById('admin-ev-hora')?.value || '22:00';
@@ -5311,7 +5287,7 @@ async function adminAddEvent() {
 
   try {
     const dataHora = new Date(`${data}T${hora}`).toISOString();
-    const { error } = await _db.from('events').insert({
+    const { error } = await client.from('events').insert({
       nome, genero: genero || 'Evento', data_hora: dataHora,
       local, endereco: endereco || null,
       preco: preco || 'Grátis', url_ingresso: url || null,
@@ -5330,7 +5306,7 @@ async function adminAddEvent() {
 // ── Lista de utilizadores ─────────────────────────────
 async function loadAdminUsers() {
   const _db = getDB();
-  if (!_db) return;
+  if (!db) return;
   const list = document.getElementById('admin-users-list');
   try {
     const { data } = await getDB()
@@ -5366,21 +5342,8 @@ async function loadAdminNotifications() {
     const { count } = await getDB()
       .from('events').select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
-    const n = count || 0;
-    // Badge no botão de notificações (topo)
     const dot = document.getElementById('notif-dot');
-    if (dot) dot.style.display = (n > 0) ? 'block' : 'none';
-    // Badge no botão do sidebar (com número)
-    const badge = document.getElementById('sidebar-notif-badge');
-    if (badge) {
-      badge.textContent = n;
-      badge.style.display = (n > 0) ? 'inline-flex' : 'none';
-    }
-    // Badge no título do painel admin (aba Eventos)
-    const tabEvents = document.getElementById('tab-events');
-    if (tabEvents) {
-      tabEvents.textContent = n > 0 ? `🎉 Eventos (${n})` : '🎉 Eventos';
-    }
+    if (dot) dot.style.display = (count > 0) ? 'block' : 'none';
   } catch(e) {}
 }
 
@@ -5469,152 +5432,123 @@ function showToast(msg) {
 // =====================</script>
 
 <script>
+// ── SUPABASE INIT ──────────────────────────────────────
 (function() {
   function initSB() {
     if (!window.supabase) { setTimeout(initSB, 100); return; }
-    if (window._supabase) return; // um único cliente — sem lock
+    if (window.__sbDone || window._supabase) return;
+    window.__sbDone = true;
 
     var client = window.supabase.createClient(
       'https://jqchhyhwoqnhumopcnip.supabase.co',
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpxY2hoeWh3b3FuaHVtb3BjbmlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTA5MzcsImV4cCI6MjA5MDQ2NjkzN30.G23hf2GFgyQwB6xaz7K31zKlVKFJ2dfKx9S86oCdrC4',
-      { auth: { persistSession: true, autoRefreshToken: true } }
+      { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'eventospt-auth' } }
     );
     window._supabase = client;
+    window.__sb_client = client;
+    console.log('✅ Supabase ligado');
 
-    // ── Auth: lógica clara por evento ─────────────────────────────────────
-    client.auth.onAuthStateChange(function(event, session) {
+    client.auth.onAuthStateChange(async function(event, session) {
       currentUser = session ? session.user : null;
-
-      if (event === 'SIGNED_IN') {
-        // Login activo — navega imediatamente, dados em background
-        _reativarBotaoLogin();
-        showScreen('app');
-        if (typeof initApp === 'function') initApp();
-        _carregarDados(currentUser);
-        return;
-      }
-
-      if (event === 'SIGNED_OUT') {
-        currentUser = null;
-        showScreen('auth');
-        return;
-      }
-
-      if (event === 'INITIAL_SESSION') {
-        // App abriu — havia sessão guardada ou não
-        if (currentUser) {
-          showScreen('app');
-          if (typeof initApp === 'function') initApp();
-          _carregarDados(currentUser);
-        } else {
-          showScreen('auth');
-        }
-        return;
+      if (currentUser) {
+        try {
+          var disp = /iPhone|iPad/i.test(navigator.userAgent) ? 'iOS' : /Android/i.test(navigator.userAgent) ? 'Android' : 'Web';
+          client.from('user_sessions').insert({ user_id: currentUser.id, dispositivo: disp });
+        } catch(e) {}
+        try {
+          var fav = await client.from('favorites').select('event_id').eq('user_id', currentUser.id);
+          favoritesIds = (fav.data || []).map(function(f){ return f.event_id; });
+        } catch(e) {}
+        try {
+          var prof = await client.from('profiles').select('*').eq('id', currentUser.id).single();
+          if (prof.data) {
+            var n = document.getElementById('profile-name');
+            var e = document.getElementById('profile-email');
+            if (n) n.textContent = prof.data.nome || currentUser.email.split('@')[0];
+            if (e) e.textContent = currentUser.email || '';
+          }
+        } catch(e) {}
+        if (typeof checkAdmin === 'function') checkAdmin(currentUser);
+        if (typeof loadDBEvents === 'function') await loadDBEvents();
+        if (typeof showScreen === 'function') { showScreen('app'); if(typeof initApp==='function') initApp(); }
+      } else {
+        if (typeof showScreen === 'function') showScreen('auth');
       }
     });
 
-    function _reativarBotaoLogin() {
-      var btn = document.querySelector('#login-form .btn-primary');
-      if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
-    }
-
-    function _carregarDados(user) {
-      try { client.from('user_sessions').insert({ user_id: user.id, dispositivo: /iPhone|iPad/i.test(navigator.userAgent)?'iOS':/Android/i.test(navigator.userAgent)?'Android':'Web' }); } catch(e){}
-      client.from('profiles').select('*').eq('id', user.id).single().then(function(r){
-        if (!r.data) return;
-        var n = document.getElementById('profile-name');
-        var e = document.getElementById('profile-email');
-        if (n) n.textContent = r.data.nome || user.email.split('@')[0];
-        if (e) e.textContent = user.email || '';
-      }).catch(function(){});
-      client.from('favorites').select('event_id').eq('user_id', user.id).then(function(r){
-        if (r.data) favoritesIds = r.data.map(function(f){ return f.event_id; });
-      }).catch(function(){});
-      if (typeof checkAdmin === 'function') checkAdmin(user);
-      if (typeof loadDBEvents === 'function') loadDBEvents();
-    }
-
-    // ── Login ──────────────────────────────────────────────────────────────
     window.doLogin = async function() {
-      var email = ((document.getElementById('login-email')||{}).value||'').trim();
-      var pass  = (document.getElementById('login-pass') ||{}).value||'';
+      var email = document.getElementById('login-email') ? document.getElementById('login-email').value.trim() : '';
+      var pass  = document.getElementById('login-pass')  ? document.getElementById('login-pass').value : '';
       if (!email || !pass) { showToast('⚠️ Preenche email e senha'); return; }
       var btn = document.querySelector('#login-form .btn-primary');
       if (btn) { btn.textContent = 'A entrar...'; btn.disabled = true; }
-      var r = await client.auth.signInWithPassword({ email: email, password: pass });
-      if (r.error) {
-        // Só reativa o botão em caso de erro — em sucesso o onAuthStateChange trata
+      try {
+        var r = await client.auth.signInWithPassword({ email: email, password: pass });
+        if (r.error) throw r.error;
+        showToast('✅ Bem-vindo!');
+      } catch(err) {
+        var msg = err.message || '';
+        if (msg.includes('Invalid login')) showToast('❌ Email ou senha incorretos');
+        else if (msg.includes('not confirmed')) showToast('❌ Confirma o teu email');
+        else showToast('❌ ' + msg);
         if (btn) { btn.textContent = 'Entrar no app'; btn.disabled = false; }
-        var m = r.error.message || '';
-        showToast(m.includes('Invalid login')   ? '❌ Email ou senha incorretos' :
-                  m.includes('not confirmed')   ? '❌ Confirma o teu email primeiro' :
-                  '❌ ' + m);
       }
-      // Sem else — se sucesso, o SIGNED_IN chama _reativarBotaoLogin e navega
     };
 
-    // ── Registo ────────────────────────────────────────────────────────────
     window.doSignup = async function() {
-      var nome  = ((document.getElementById('signup-name') ||{}).value||'').trim();
-      var email = ((document.getElementById('signup-email')||{}).value||'').trim();
-      var pass  = (document.getElementById('signup-pass') ||{}).value||'';
-      if (!nome||!email||!pass) { showToast('⚠️ Preenche todos os campos'); return; }
-      if (pass.length < 6)      { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
+      var nome  = document.getElementById('signup-name')  ? document.getElementById('signup-name').value.trim() : '';
+      var email = document.getElementById('signup-email') ? document.getElementById('signup-email').value.trim() : '';
+      var pass  = document.getElementById('signup-pass')  ? document.getElementById('signup-pass').value : '';
+      if (!nome || !email || !pass) { showToast('⚠️ Preenche todos os campos'); return; }
+      if (pass.length < 6) { showToast('⚠️ Senha mínimo 6 caracteres'); return; }
       var btn = document.querySelector('#signup-form .btn-primary');
       if (btn) { btn.textContent = 'A criar...'; btn.disabled = true; }
-      var r = await client.auth.signUp({ email: email, password: pass, options: { data: { full_name: nome } } });
-      if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
-      if (r.error) showToast('❌ ' + r.error.message);
-      else showToast('🎉 Conta criada! Verifica o teu email.');
+      try {
+        var r = await client.auth.signUp({ email: email, password: pass, options: { data: { full_name: nome } } });
+        if (r.error) throw r.error;
+        showToast('🎉 Conta criada! Verifica o teu email.');
+      } catch(err) {
+        showToast('❌ ' + (err.message || 'Erro'));
+        if (btn) { btn.textContent = 'Criar conta grátis'; btn.disabled = false; }
+      }
     };
 
-    // ── Logout ─────────────────────────────────────────────────────────────
     window.logout = async function() {
-      await client.auth.signOut().catch(function(){});
-      // SIGNED_OUT trata a navegação para auth
+      await client.auth.signOut();
+      currentUser = null;
+      showToast('👋 Até logo!');
+      setTimeout(function(){ showScreen('auth'); }, 600);
     };
 
-    // ── Google ─────────────────────────────────────────────────────────────
-    window.googleLogin = async function() {
-      var r = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-      if (r.error) showToast('❌ Erro Google: ' + r.error.message);
-    };
-
-    // ── Eventos: TODOS os aprovados, sem filtro de data ────────────────────
     window.loadDBEvents = async function() {
       try {
-        var r = await client.from('events').select('*').eq('status', 'approved')
-          .order('data_hora', { ascending: true }).limit(500);
+        var r = await client.from('events').select('*').eq('status','approved')
+          .gt('data_hora', new Date(Date.now() - 30*60*1000).toISOString())
+          .order('data_hora', { ascending: true }).limit(100);
         if (r.error || !r.data || !r.data.length) return;
-        // Limpa eventos da BD anteriores
-        for (var i = EVENTS.length - 1; i >= 0; i--) {
-          if (EVENTS[i].fromDB) EVENTS.splice(i, 1);
-        }
         r.data.forEach(function(ev) {
-          var addr = ev.local + (ev.endereco ? ', ' + ev.endereco : '') + ', Portugal';
-          EVENT_COORDS[ev.id] = { lat: ev.lat||null, lng: ev.lng||null, address: addr };
-          EVENTS.push({
-            id: ev.id, name: ev.nome, genre: ev.genero, category: ev.categoria||'music',
-            emoji: ev.emoji||'🎉',
+          var converted = {
+            id: ev.id, name: ev.nome, genre: ev.genero,
+            emoji: ev.emoji || '🎉',
             dateObj: new Date(ev.data_hora),
             date: typeof formatEventDate==='function' ? formatEventDate(new Date(ev.data_hora)) : ev.data_hora,
             venue: ev.local + (ev.endereco ? ' · ' + ev.endereco : ''),
-            dist: 1,
+            dist: parseFloat((Math.random()*8+0.5).toFixed(1)),
             going: String(ev.going_count || Math.floor(Math.random()*400+50)),
-            price: ev.preco||'Grátis', source: ev.fonte||'EventosPt',
-            url: ev.url_ingresso||null,
-            c1: ev.cor1||'#0e1118', c2: ev.cor2||'#312e81',
-            recommended: ev.recomendado||false, tags: [ev.genero], fromDB: true,
-            descricao: ev.descricao||null,
-            fotos: ev.url_foto ? [ev.url_foto] : [],
-            video: ev.video_url||null,
-          });
+            price: ev.preco || 'Grátis',
+            source: ev.fonte || 'EventosPt',
+            url: ev.url_ingresso || null,
+            c1: ev.cor1 || '#0e1118', c2: ev.cor2 || '#312e81',
+            recommended: ev.recomendado || false,
+            tags: [ev.genero], fromDB: true
+          };
+          if (!EVENTS.find(function(e){ return e.id === converted.id; })) EVENTS.push(converted);
         });
-        if (typeof applyFilters === 'function') applyFilters();
-        console.log('[DB] ' + r.data.length + ' eventos carregados');
-      } catch(err) { console.warn('[DB] Erro:', err.message); }
+        if (typeof applyFilters==='function') applyFilters();
+      } catch(err) { console.warn('Eventos:', err.message); }
     };
 
+    window._supabase = client;
   }
   initSB();
 })();</script>
