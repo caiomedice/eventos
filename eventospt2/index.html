@@ -308,12 +308,14 @@
     .ai-option:hover  { background: var(--surface3); }
     .icon-btn:hover   { background: var(--surface3); }
 
-    /* Modais — centrados na área de conteúdo (descontando sidebar de 260px) */
+    /* Modais — centrados na tela toda */
     .modal-overlay {
-      left: 260px !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
       transform: none !important;
-      width: calc(100% - 260px) !important;
-      max-width: calc(100% - 260px) !important;
+      justify-content: center !important;
     }
     .modal-sheet { max-width: 480px !important; margin: 0 auto; }
 
@@ -1084,14 +1086,14 @@
     position: fixed;
     top: 0;
     bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
     width: 100%;
-    max-width: 430px;
     background: rgba(0,0,0,0.7);
     backdrop-filter: blur(8px);
     z-index: 500;
     align-items: flex-end;
+    justify-content: center;
     animation: fadeIn 0.2s;
   }
   .modal-overlay.open { display: flex; }
@@ -2286,10 +2288,7 @@
       <div class="detail-info-icon">📍</div>
       <div><div class="detail-info-label">Local</div><div class="detail-info-val" id="detail-venue">Club Ultra, Porto</div></div>
     </div>
-    <div class="detail-info-row">
-      <div class="detail-info-icon">🤖</div>
-      <div><div class="detail-info-label">Fonte</div><div class="detail-info-val" id="detail-source">Detectado via IA · Instagram</div></div>
-    </div>
+    <!-- Fonte removida -->
 
     <!-- TABS: Info / Média -->
     <div style="display:flex;gap:4px;background:var(--surface2);border-radius:12px;padding:4px;margin-bottom:16px;">
@@ -2895,6 +2894,19 @@
         <input class="form-input" id="manual-frequencia" type="text"
           placeholder="Ex: Todas as segundas-feiras"
           style="margin-top:8px;display:none;">
+      </div>
+      <div class="form-group" style="margin-bottom:14px;">
+        <div class="form-label">📸 Foto do evento (opcional)</div>
+        <div id="manual-foto-preview" style="display:none;margin-bottom:8px;position:relative;">
+          <img id="manual-foto-img" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);">
+          <div onclick="removeManualFoto()" style="position:absolute;top:8px;right:8px;width:28px;height:28px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:white;">✕</div>
+        </div>
+        <label id="manual-foto-label" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;background:var(--surface2);border:2px dashed var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--muted2);font-size:13px;font-weight:500;">
+          <span style="font-size:24px;">📷</span>
+          <span>Toca para escolher uma foto</span>
+          <input type="file" id="manual-foto-input" accept="image/*" style="display:none;" onchange="previewManualFoto(this)">
+        </label>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">JPG, PNG, WebP · Máx. 5MB</div>
       </div>
       <button class="btn-primary" onclick="submitManualEvent()">
         ✅ Guardar e adicionar à lista
@@ -3710,6 +3722,7 @@ function switchDetailTab(tab) {
 
 function openDetail(id) {
   const ev = EVENTS.find(e => e.id === id) || EVENTS[0];
+  if (!ev) { showToast('⚠️ Evento não encontrado'); return; }
   currentEventId = ev.id;
   document.getElementById('detail-emoji').textContent  = ev.emoji;
   document.getElementById('detail-genre').textContent  = ev.genre;
@@ -3720,7 +3733,7 @@ function openDetail(id) {
   priceEl.style.color = /grátis|gratis|free/i.test(ev.price) ? '#4ade80' : 'var(--text)';
   document.getElementById('detail-date').textContent   = formatEventDate(ev.dateObj);
   document.getElementById('detail-venue').textContent  = ev.venue;
-  document.getElementById('detail-source').textContent = 'Detectado via IA · ' + ev.source;
+  // Fonte removida da UI
   document.querySelector('.detail-hero-bg').style.background = `linear-gradient(135deg, ${ev.c1}, ${ev.c2})`;
 
   const cdEl = document.getElementById('detail-countdown');
@@ -4043,6 +4056,28 @@ Hoje é ${today}. Retorna APENAS este JSON:
 
 // ── MANUAL EVENT ──────────────────────────────────────────
 var manualRecorrente = 'nao';
+var manualFotoDataUrl = null;
+
+function previewManualFoto(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { showToast('⚠️ Foto demasiado grande (máx. 5MB)'); input.value = ''; return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    manualFotoDataUrl = e.target.result;
+    document.getElementById('manual-foto-img').src = manualFotoDataUrl;
+    document.getElementById('manual-foto-preview').style.display = 'block';
+    document.getElementById('manual-foto-label').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeManualFoto() {
+  manualFotoDataUrl = null;
+  document.getElementById('manual-foto-preview').style.display = 'none';
+  document.getElementById('manual-foto-label').style.display = 'flex';
+  document.getElementById('manual-foto-input').value = '';
+}
 
 function toggleManualRecorrente(el, val) {
   document.querySelectorAll('#manual-recorrente-chips .chip').forEach(c => c.classList.remove('active'));
@@ -4118,6 +4153,7 @@ function submitManualEvent() {
     tags:        [genero, '👤 Manual'],
     recorrente:  manualRecorrente !== 'nao' ? 'Sim' : 'Não',
     frequencia:  freq,
+    fotos:       manualFotoDataUrl ? [manualFotoDataUrl] : [],
   };
 
   if (!EVENTS.find(e => e.id === newId)) EVENTS.push(newEvent);
@@ -4132,6 +4168,7 @@ function submitManualEvent() {
     if (el) el.value = '';
   });
   document.getElementById('manual-data').value = new Date().toISOString().split('T')[0];
+  removeManualFoto();
 
   closeAIModal();
   applyFilters();
@@ -4629,47 +4666,56 @@ const EVENT_COORDS = {
 var currentEventId = 0;
 
 function getCoords(id) {
-  return EVENT_COORDS[id] || { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
+  if (EVENT_COORDS[id]) return EVENT_COORDS[id];
+  // Para eventos dinâmicos, extrai endereço do venue
+  const ev = EVENTS.find(e => e.id === id);
+  if (ev) {
+    const parts = (ev.venue || '').split(' · ');
+    const addr = parts.length > 1 ? parts.slice(1).join(' · ') : ev.venue || 'Porto, Portugal';
+    return { lat: 41.1579, lng: -8.6291, address: addr, dynamic: true };
+  }
+  return { lat: 41.1579, lng: -8.6291, address: 'Porto, Portugal' };
 }
 
 function openWaze(e) {
   e.preventDefault();
-  const { lat, lng } = getCoords(currentEventId);
-  const url = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes&zoom=17`;
+  const c = getCoords(currentEventId);
+  const url = c.dynamic
+    ? `https://waze.com/ul?q=${encodeURIComponent(c.address)}&navigate=yes`
+    : `https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes&zoom=17`;
   showToast('🚗 A abrir o Waze...');
   setTimeout(() => window.open(url, '_blank'), 400);
 }
 
 function openGoogleMaps(e) {
   e.preventDefault();
-  const { lat, lng, address } = getCoords(currentEventId);
-  const dest = encodeURIComponent(address);
-  // Try native app first, fallback to web
-  const nativeUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
-  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  const c = getCoords(currentEventId);
+  const dest = c.dynamic ? encodeURIComponent(c.address) : `${c.lat},${c.lng}`;
+  const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
   showToast('🗺 A abrir o Google Maps...');
   setTimeout(() => {
-    // On mobile try deep link, else web
     const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
-    window.open(isMobile ? `https://maps.google.com/?daddr=${lat},${lng}` : webUrl, '_blank');
+    window.open(isMobile ? `https://maps.google.com/?daddr=${dest}` : webUrl, '_blank');
   }, 400);
 }
 
 function openAppleMaps(e) {
   e.preventDefault();
-  const { lat, lng, address } = getCoords(currentEventId);
-  const dest = encodeURIComponent(address);
-  const url = `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
+  const c = getCoords(currentEventId);
+  const dest = c.dynamic ? encodeURIComponent(c.address) : `${c.lat},${c.lng}`;
+  const url = `https://maps.apple.com/?daddr=${dest}&dirflg=d`;
   showToast('🍎 A abrir o Apple Maps...');
   setTimeout(() => window.open(url, '_blank'), 400);
 }
 
 function copyAddress() {
-  const { address } = getCoords(currentEventId);
+  const c = getCoords(currentEventId);
+  const ev = EVENTS.find(e => e.id === currentEventId);
+  const textToCopy = ev ? ev.venue : c.address;
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(address).then(() => showToast('📋 Endereço copiado!'));
+    navigator.clipboard.writeText(textToCopy).then(() => showToast('📋 Endereço copiado!'));
   } else {
-    showToast('📋 ' + address);
+    showToast('📋 ' + textToCopy);
   }
 }
 
@@ -4694,13 +4740,14 @@ function shareEvent() {
 
 function updateMapForEvent(id) {
   const c = getCoords(id);
+  const ev = EVENTS.find(e => e.id === id);
   const delta = 0.025;
   const bbox = `${c.lng - delta},${c.lat - delta},${c.lng + delta},${c.lat + delta}`;
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}`;
   document.getElementById('detail-map-iframe').src = src;
   document.getElementById('detail-map-iframe').style.pointerEvents = 'none';
   document.getElementById('map-overlay').classList.remove('hidden');
-  document.getElementById('copy-address-text').textContent = c.address;
+  document.getElementById('copy-address-text').textContent = ev ? ev.venue : c.address;
 }
 
 
@@ -5273,7 +5320,7 @@ async function moderateEvent(id, status) {
 
 async function adminAddEvent() {
   const _db = getDB();
-  if (!db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
+  if (!_db || !isAdmin) { showToast('⚠️ Supabase não ligado'); return; }
   const nome     = document.getElementById('admin-ev-nome')?.value?.trim();
   const data     = document.getElementById('admin-ev-data')?.value;
   const hora     = document.getElementById('admin-ev-hora')?.value || '22:00';
@@ -5287,7 +5334,7 @@ async function adminAddEvent() {
 
   try {
     const dataHora = new Date(`${data}T${hora}`).toISOString();
-    const { error } = await client.from('events').insert({
+    const { error } = await _db.from('events').insert({
       nome, genero: genero || 'Evento', data_hora: dataHora,
       local, endereco: endereco || null,
       preco: preco || 'Grátis', url_ingresso: url || null,
@@ -5306,7 +5353,7 @@ async function adminAddEvent() {
 // ── Lista de utilizadores ─────────────────────────────
 async function loadAdminUsers() {
   const _db = getDB();
-  if (!db) return;
+  if (!_db) return;
   const list = document.getElementById('admin-users-list');
   try {
     const { data } = await getDB()
